@@ -35,9 +35,9 @@
     const btnDisconnect = document.getElementById('btn-disconnect');
     const btnInstallApp = document.getElementById('btn-install-app');
 
-    let fpsCounter = 0;
-    let lastFpsUpdate = Date.now();
-    let touchHandler = null;
+    let isSubscribed = false;
+    let pingInterval = null;
+    let hasReceivedKeyFrame = false;
 
     // 1. Service Worker & PWA Install Support
     if ('serviceWorker' in navigator) {
@@ -97,6 +97,11 @@
 
         ws.onopen = () => {
             console.log('[WebSocket] Secure connection established.');
+            const savedToken = sessionStorage.getItem('aegis_token');
+            if (savedToken) {
+                sessionToken = savedToken;
+                requestDisplays();
+            }
         };
 
         ws.onmessage = (event) => {
@@ -155,6 +160,7 @@
         switch (msg.type) {
             case 'auth_success':
                 sessionToken = msg.token;
+                sessionStorage.setItem('aegis_token', msg.token);
                 console.log('[Auth] Authenticated successfully with host.');
                 authPanel.style.display = 'none';
                 displayPanel.style.display = 'block';
@@ -162,10 +168,12 @@
                 break;
 
             case 'auth_failure':
+                sessionStorage.removeItem('aegis_token');
                 showAuthError(msg.error || 'Authentication failed.');
                 break;
 
             case 'displays_list':
+                authPanel.style.display = 'none';
                 renderDisplays(msg.displays);
                 break;
 
@@ -177,7 +185,19 @@
                 break;
 
             case 'error':
-                alert(`Error: ${msg.message}`);
+                if (msg.message && msg.message.toLowerCase().includes('unauthorized')) {
+                    sessionStorage.removeItem('aegis_token');
+                    sessionToken = null;
+                    isSubscribed = false;
+                    selectedDisplayId = null;
+                    if (pingInterval) clearInterval(pingInterval);
+                    authPanel.style.display = 'block';
+                    displayPanel.style.display = 'none';
+                    viewportPanel.style.display = 'none';
+                    statsChip.style.display = 'none';
+                    showAuthError('Session expired or host restarted. Please enter the current PIN.');
+                }
+                console.error(`Host Error: ${msg.message}`);
                 break;
         }
     }
@@ -201,7 +221,7 @@
         // Auto-detect Extended Monitor:
         // Automatically select the extended screen (isPrimary === false) without requiring manual clicks
         const targetDisplay = displays.find(d => !d.isPrimary) || displays[0];
-        if (targetDisplay && selectedDisplayId === null) {
+        if (targetDisplay && !isSubscribed) {
             console.log(`[AutoDetect] Auto-selecting display: ${targetDisplay.name} (${targetDisplay.width}x${targetDisplay.height}, Primary: ${targetDisplay.isPrimary})`);
             selectDisplay(targetDisplay.id, targetDisplay);
             return;
@@ -225,6 +245,8 @@
     }
 
     function selectDisplay(id, displayInfo) {
+        if (isSubscribed && selectedDisplayId === id) return;
+        isSubscribed = true;
         selectedDisplayId = id;
         displayPanel.style.display = 'none';
         viewportPanel.style.display = 'flex';
@@ -234,14 +256,16 @@
         initWebCodecsDecoder();
 
         // Initialize touch & mouse input handler
-        touchHandler = new window.TouchInputHandler(displayCanvas, (inputEvent) => {
-            sendJson({
-                type: 'input',
-                token: sessionToken,
-                event: inputEvent
+        if (!touchHandler) {
+            touchHandler = new window.TouchInputHandler(displayCanvas, (inputEvent) => {
+                sendJson({
+                    type: 'input',
+                    token: sessionToken,
+                    event: inputEvent
+                });
             });
-        });
-        touchHandler.enable();
+            touchHandler.enable();
+        }
 
         // Subscribe to display video stream
         sendJson({
@@ -251,7 +275,8 @@
         });
 
         // Ping loop for latency tracking
-        setInterval(() => {
+        if (pingInterval) clearInterval(pingInterval);
+        pingInterval = setInterval(() => {
             sendJson({
                 type: 'ping',
                 sentTime: Date.now()
@@ -260,69 +285,114 @@
     }
 
     // Step 3: WebCodecs Hardware Video Decoding
+    function resetDecoder() {
+        console.warn('[WebCodecs] Resetting decoder state...');
+        isDecoderConfigured = false;
+        hasReceivedKeyFrame = false;
+        spsUnit = null;
+        ppsUnit = null;
+        nalBuffer = new Uint8Array(0);
+        if (videoDecoder && videoDecoder.state !== 'closed') {
+            try {
+                videoDecoder.close();
+            } catch {}
+        }
+        initWebCodecsDecoder();
+    }
+
     function initWebCodecsDecoder() {
         if (!('VideoDecoder' in window)) {
             alert('Your browser does not support WebCodecs. Please update to a modern browser (Chrome, Edge, Safari 16.4+, Opera).');
             return;
         }
 
-        videoDecoder = new VideoDecoder({
-            output: (videoFrame) => {
-                if (displayCanvas.width !== videoFrame.displayWidth ||
-                    displayCanvas.height !== videoFrame.displayHeight) {
-                    displayCanvas.width = videoFrame.displayWidth;
-                    displayCanvas.height = videoFrame.displayHeight;
+        try {
+            videoDecoder = new VideoDecoder({
+                output: (videoFrame) => {
+                    if (displayCanvas.width !== videoFrame.displayWidth ||
+                        displayCanvas.height !== videoFrame.displayHeight) {
+                        displayCanvas.width = videoFrame.displayWidth;
+                        displayCanvas.height = videoFrame.displayHeight;
+                    }
+
+                    ctx.drawImage(videoFrame, 0, 0, displayCanvas.width, displayCanvas.height);
+                    videoFrame.close();
+
+                    if (streamLoading) streamLoading.style.display = 'none';
+
+                    fpsCounter++;
+                    const now = Date.now();
+                    if (now - lastFpsUpdate >= 1000) {
+                        statFps.textContent = `${fpsCounter} FPS`;
+                        fpsCounter = 0;
+                        lastFpsUpdate = now;
+                    }
+                },
+                error: (err) => {
+                    console.error('[WebCodecs Decoder Fatal Error]', err);
+                    resetDecoder();
                 }
-
-                ctx.drawImage(videoFrame, 0, 0, displayCanvas.width, displayCanvas.height);
-                videoFrame.close();
-
-                if (streamLoading) streamLoading.style.display = 'none';
-
-                fpsCounter++;
-                const now = Date.now();
-                if (now - lastFpsUpdate >= 1000) {
-                    statFps.textContent = `${fpsCounter} FPS`;
-                    fpsCounter = 0;
-                    lastFpsUpdate = now;
-                }
-            },
-            error: (err) => {
-                console.error('[WebCodecs Decoder Error]', err);
-            }
-        });
+            });
+        } catch (e) {
+            console.error('[WebCodecs Init Error]', e);
+        }
     }
 
-    // Annex-B H.264 NAL Parser
+    // Helper: Find 3-byte and 4-byte Annex B start codes
+    function findStartCodes(buffer) {
+        const list = [];
+        const len = buffer.length;
+        for (let i = 0; i < len - 3; i++) {
+            if (buffer[i] === 0 && buffer[i+1] === 0) {
+                if (buffer[i+2] === 1) {
+                    list.push({ index: i, length: 3 });
+                    i += 2;
+                } else if (buffer[i+2] === 0 && buffer[i+3] === 1) {
+                    list.push({ index: i, length: 4 });
+                    i += 3;
+                }
+            }
+        }
+        if (len >= 3 && buffer[len-3] === 0 && buffer[len-2] === 0 && buffer[len-1] === 1) {
+            if (list.length === 0 || list[list.length - 1].index !== len - 3) {
+                list.push({ index: len - 3, length: 3 });
+            }
+        }
+        return list;
+    }
+
+    // Annex-B H.264 NAL Parser & Frame Dispatcher
     function handleBinaryVideoChunk(chunk) {
         if (!videoDecoder) return;
 
-        // Concatenate incoming bytes
-        const newBuf = new Uint8Array(nalBuffer.length + chunk.length);
-        newBuf.set(nalBuffer);
-        newBuf.set(chunk, nalBuffer.length);
-        nalBuffer = newBuf;
-
-        // Find NAL unit start codes (00 00 01 or 00 00 00 01)
-        const nalUnits = [];
-        let startIdx = -1;
-
-        for (let i = 0; i < nalBuffer.length - 3; i++) {
-            if (nalBuffer[i] === 0 && nalBuffer[i+1] === 0 &&
-               (nalBuffer[i+2] === 1 || (nalBuffer[i+2] === 0 && nalBuffer[i+3] === 1))) {
-                if (startIdx !== -1) {
-                    nalUnits.push(nalBuffer.subarray(startIdx, i));
-                }
-                startIdx = (nalBuffer[i+2] === 1) ? i + 3 : i + 4;
-                i = startIdx - 1;
-            }
-        }
-
-        if (startIdx !== -1 && startIdx < nalBuffer.length) {
-            nalBuffer = nalBuffer.subarray(startIdx);
-        } else {
+        // Prevent memory overflow on unbounded buffer
+        if (nalBuffer.length > 8 * 1024 * 1024) {
+            console.warn('[Stream] Clearing oversize buffer');
             nalBuffer = new Uint8Array(0);
         }
+
+        // Concatenate incoming bytes
+        const combined = new Uint8Array(nalBuffer.length + chunk.length);
+        combined.set(nalBuffer);
+        combined.set(chunk, nalBuffer.length);
+        nalBuffer = combined;
+
+        const startCodes = findStartCodes(nalBuffer);
+        if (startCodes.length < 2) {
+            // Need at least 2 start codes to delineate a full NAL unit
+            return;
+        }
+
+        const nalUnits = [];
+        for (let k = 0; k < startCodes.length - 1; k++) {
+            const start = startCodes[k].index + startCodes[k].length;
+            const end = startCodes[k + 1].index;
+            if (end > start) {
+                nalUnits.push(nalBuffer.subarray(start, end));
+            }
+        }
+        // Retain remaining data from the last start code onward
+        nalBuffer = nalBuffer.subarray(startCodes[startCodes.length - 1].index);
 
         for (const nal of nalUnits) {
             if (nal.length === 0) continue;
@@ -365,44 +435,56 @@
                 const isKey = (nalType === 5);
                 const isDelta = (nalType === 1);
 
-                if (isKey || isDelta) {
-                    let fullChunk;
-                    if (isKey && spsUnit && ppsUnit) {
-                        // Prepend SPS and PPS to IDR keyframe for guaranteed decoding across all devices
-                        const totalLen = (4 + spsUnit.length) + (4 + ppsUnit.length) + (4 + nal.length);
-                        fullChunk = new Uint8Array(totalLen);
-                        let offset = 0;
+                if (!isKey && !isDelta) continue;
 
-                        // SPS
-                        fullChunk[offset] = 0; fullChunk[offset+1] = 0; fullChunk[offset+2] = 0; fullChunk[offset+3] = 1;
-                        offset += 4;
-                        fullChunk.set(spsUnit, offset);
-                        offset += spsUnit.length;
-
-                        // PPS
-                        fullChunk[offset] = 0; fullChunk[offset+1] = 0; fullChunk[offset+2] = 0; fullChunk[offset+3] = 1;
-                        offset += 4;
-                        fullChunk.set(ppsUnit, offset);
-                        offset += ppsUnit.length;
-
-                        // IDR NAL
-                        fullChunk[offset] = 0; fullChunk[offset+1] = 0; fullChunk[offset+2] = 0; fullChunk[offset+3] = 1;
-                        offset += 4;
-                        fullChunk.set(nal, offset);
-                    } else {
-                        fullChunk = new Uint8Array(4 + nal.length);
-                        fullChunk[0] = 0; fullChunk[1] = 0; fullChunk[2] = 0; fullChunk[3] = 1;
-                        fullChunk.set(nal, 4);
+                // Essential: WebCodecs cannot decode a delta frame before the first keyframe!
+                if (!hasReceivedKeyFrame) {
+                    if (!isKey) {
+                        continue; // Discard delta frames until the first keyframe arrives
                     }
+                    hasReceivedKeyFrame = true;
+                    console.log('[WebCodecs] First IDR Keyframe received, starting playback!');
+                }
 
-                    try {
-                        videoDecoder.decode(new EncodedVideoChunk({
-                            type: isKey ? 'key' : 'delta',
-                            timestamp: performance.now() * 1000,
-                            data: fullChunk
-                        }));
-                    } catch (e) {
-                        console.error('[WebCodecs Decode Error]', e);
+                let fullChunk;
+                if (isKey && spsUnit && ppsUnit) {
+                    // Prepend SPS and PPS to IDR keyframe for guaranteed decoding across all devices
+                    const totalLen = (4 + spsUnit.length) + (4 + ppsUnit.length) + (4 + nal.length);
+                    fullChunk = new Uint8Array(totalLen);
+                    let offset = 0;
+
+                    // SPS
+                    fullChunk[offset] = 0; fullChunk[offset+1] = 0; fullChunk[offset+2] = 0; fullChunk[offset+3] = 1;
+                    offset += 4;
+                    fullChunk.set(spsUnit, offset);
+                    offset += spsUnit.length;
+
+                    // PPS
+                    fullChunk[offset] = 0; fullChunk[offset+1] = 0; fullChunk[offset+2] = 0; fullChunk[offset+3] = 1;
+                    offset += 4;
+                    fullChunk.set(ppsUnit, offset);
+                    offset += ppsUnit.length;
+
+                    // IDR NAL
+                    fullChunk[offset] = 0; fullChunk[offset+1] = 0; fullChunk[offset+2] = 0; fullChunk[offset+3] = 1;
+                    offset += 4;
+                    fullChunk.set(nal, offset);
+                } else {
+                    fullChunk = new Uint8Array(4 + nal.length);
+                    fullChunk[0] = 0; fullChunk[1] = 0; fullChunk[2] = 0; fullChunk[3] = 1;
+                    fullChunk.set(nal, 4);
+                }
+
+                try {
+                    videoDecoder.decode(new EncodedVideoChunk({
+                        type: isKey ? 'key' : 'delta',
+                        timestamp: Math.round(performance.now() * 1000),
+                        data: fullChunk
+                    }));
+                } catch (e) {
+                    console.error('[WebCodecs Decode Error]', e);
+                    if (videoDecoder && videoDecoder.state === 'closed') {
+                        resetDecoder();
                     }
                 }
             }
@@ -430,7 +512,9 @@
     const btnSwitchDisplay = document.getElementById('btn-switch-display');
     if (btnSwitchDisplay) {
         btnSwitchDisplay.addEventListener('click', () => {
+            isSubscribed = false;
             selectedDisplayId = null;
+            if (pingInterval) clearInterval(pingInterval);
             viewportPanel.style.display = 'none';
             statsChip.style.display = 'none';
             displayPanel.style.display = 'block';
@@ -439,6 +523,8 @@
     }
 
     btnDisconnect.addEventListener('click', () => {
+        isSubscribed = false;
+        sessionStorage.removeItem('aegis_token');
         releaseWakeLock();
         window.location.reload();
     });

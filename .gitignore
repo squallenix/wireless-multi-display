@@ -58,3 +58,4 @@ $RECYCLE.BIN/
 *.log
 tmp/
 temp/
+.active_pin

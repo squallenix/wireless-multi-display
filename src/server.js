@@ -59,8 +59,13 @@ function handleHttpRequest(req, res) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
 
-    let filePath = path.join(PUBLIC_DIR, req.url === '/' ? 'index.html' : req.url.split('?')[0]);
+    const cleanPath = req.url.split('?')[0];
+    const relativePath = (cleanPath === '/' || cleanPath === '') ? 'index.html' : cleanPath.replace(/^\//, '');
+    let filePath = path.join(PUBLIC_DIR, relativePath);
 
     // Prevent directory traversal attacks
     if (!filePath.startsWith(PUBLIC_DIR)) {

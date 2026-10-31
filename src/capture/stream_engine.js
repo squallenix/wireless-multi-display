@@ -76,22 +76,36 @@ class StreamEngine {
         let stream = this.activeStreams.get(displayId);
 
         if (!stream) {
+            const display = displayManager.getDisplay(displayId);
+            // On virtual monitors (non-primary), DXGI desktop duplication times out when screen is idle.
+            // gdigrab is 100% stable while retaining NVENC GPU acceleration.
+            const initialMode = (display && !display.isPrimary) ? 'gdigrab' : 'ddagrab';
             stream = {
                 displayId,
                 ffmpeg: null,
                 clients: new Set(),
-                mode: 'ddagrab' // Start with ultra-low latency DXGI
+                mode: initialMode,
+                cachedHeaderChunk: null
             };
             this.activeStreams.set(displayId, stream);
             this.startFfmpeg(stream);
         }
 
-        stream.clients.add(ws);
-        console.log(`[StreamEngine] Client subscribed to Display ${displayId}. Total viewers for this display: ${stream.clients.size}`);
+        if (!stream.clients.has(ws)) {
+            stream.clients.add(ws);
+            console.log(`[StreamEngine] Client subscribed to Display ${displayId}. Total viewers for this display: ${stream.clients.size}`);
 
-        ws.on('close', () => {
-            this.unsubscribeClient(displayId, ws);
-        });
+            // Send cached SPS/PPS header chunk so client decoder configures instantly
+            if (stream.cachedHeaderChunk && ws.readyState === 1 /* OPEN */) {
+                try {
+                    ws.send(stream.cachedHeaderChunk);
+                } catch {}
+            }
+
+            ws.once('close', () => {
+                this.unsubscribeClient(displayId, ws);
+            });
+        }
     }
 
     unsubscribeClient(displayId, ws) {
@@ -150,7 +164,7 @@ class StreamEngine {
             '-b:v', bitrate,
             '-maxrate', maxrate,
             '-bufsize', '500k',          // Small buffer for immediate delivery
-            '-g', `${Math.round(fps / 2)}`, // Intra-refresh GOP every 0.5 sec for instant sync
+            '-g', `${Math.max(15, Math.round(fps / 4))}`, // Intra-refresh GOP every 0.25 sec for instant sync
             '-bf', '0',                  // Zero B-frames to eliminate decoding delay
             '-profile:v', 'high',
             '-level', 'auto',
@@ -188,6 +202,12 @@ class StreamEngine {
                     console.log(`[StreamEngine] GPU frames successfully generated and streaming to Display ${stream.displayId} viewers!`);
                     hasLoggedFrame = true;
                 }
+
+                // Cache the first chunk (which contains SPS/PPS headers)
+                if (!stream.cachedHeaderChunk && chunk.length > 20) {
+                    stream.cachedHeaderChunk = chunk;
+                }
+
                 // Broadcast video NAL units to all authenticated clients on this monitor
                 for (const client of stream.clients) {
                     if (client.readyState === 1 /* OPEN */) {
@@ -207,18 +227,18 @@ class StreamEngine {
 
             proc.on('exit', (code) => {
                 console.log(`[StreamEngine] FFmpeg process exited with code ${code}.`);
-                const lifetime = Date.now() - startedAt;
+                stream.ffmpeg = null;
 
-                // Automatic failover: If ddagrab failed right away, fall back to gdigrab
-                if (stream.mode === 'ddagrab' && lifetime < 2000 && stream.clients.size > 0) {
-                    console.warn('[StreamEngine] ddagrab failed or denied. Falling back to GDI mode...');
+                // Automatic failover: If ddagrab failed, fall back to gdigrab immediately
+                if (stream.mode === 'ddagrab' && code !== 0 && stream.clients.size > 0) {
+                    console.warn('[StreamEngine] ddagrab exited with error. Seamlessly falling back to GDI mode...');
                     stream.mode = 'gdigrab';
                     this.startFfmpeg(stream);
                 } else if (stream.clients.size > 0) {
                     // Reconnect after brief pause
                     setTimeout(() => {
                         if (stream.clients.size > 0) this.startFfmpeg(stream);
-                    }, 1000);
+                    }, 500);
                 }
             });
 

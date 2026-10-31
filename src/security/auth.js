@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 class SecurityAuth {
     constructor() {
@@ -14,6 +16,10 @@ class SecurityAuth {
     generatePin() {
         this.currentPin = crypto.randomInt(100000, 999999).toString();
         this.pinCreatedAt = Date.now();
+        try {
+            const pinFile = path.join(__dirname, '..', '..', '.active_pin');
+            fs.writeFileSync(pinFile, this.currentPin, 'utf8');
+        } catch {}
         console.log(`\n======================================================`);
         console.log(`[AUTH] NEW PAIRING PIN GENERATED: >>> ${this.currentPin} <<<`);
         console.log(`[AUTH] Enter this PIN on your laptop/phone to pair.`);

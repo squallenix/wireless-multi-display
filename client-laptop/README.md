@@ -29,21 +29,20 @@ Inside the `client-laptop/` folder:
 - **On Windows:** Double-click [`launch_laptop.bat`](launch_laptop.bat).
 - **On macOS / Linux:** Run `./launch_laptop.sh`.
 
-It automatically launches Edge or Chrome in **Standalone App Window Mode** (`--app=https://... --start-fullscreen`), giving you a borderless, full-speed monitor display with zero browser clutter.
+**Features:**
+- **Auto-Discovery:** Automatically detects the Host PC on your local network (no typing IPs).
+- **Standalone Borderless Window:** Launches Edge, Chrome, Brave, or Opera GX in dedicated native App Mode (`--app=https://... --start-fullscreen`).
+- **Zero TLS Warnings:** Bypasses self-signed certificate warnings automatically.
+- **Built-in Python Mode:** Option 2 in the menu lets you run the low-latency FFplay streaming client directly with automatic dependency installation.
 
 ### Option 2: Browser PWA Installation
-1. On your laptop, navigate to `https://<HOST-IP>:8443` in Chrome, Edge, or Brave.
+1. On your laptop, navigate to `https://<HOST-IP>:8443` in Chrome, Edge, Brave, or Opera.
 2. Click the **"📲 Install App"** button or the install icon in your browser's address bar.
-3. AegisDisplay will install directly to your Windows Start Menu, Taskbar, or macOS Applications folder!
+3. AegisDisplay will install directly to your Windows Start Menu, Taskbar, or Applications folder!
 
-### Option 3: Standalone Python & FFplay Receiver (For Developers)
-If you want a pure command-line streaming client:
-1. Install requirements:
-   ```bash
-   pip install websocket-client
-   ```
-2. Run:
-   ```bash
-   python client_laptop.py
-   ```
-   This streams raw H.264 video chunks directly into `ffplay` with zero buffer delay.
+### Option 3: Standalone Python & FFplay Receiver
+```bash
+pip install websocket-client
+python client_laptop.py
+```
+Streams raw H.264 video chunks directly into `ffplay` with zero buffer delay and video-sync.

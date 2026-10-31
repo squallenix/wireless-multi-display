@@ -103,13 +103,13 @@ def main():
         "ffplay",
         "-hide_banner",
         "-loglevel", "error",
-        "-window_title", f"AegisDisplay - Monitor {display_id}",
+        "-window_title", f"AegisDisplay - Extended Monitor {display_id}",
         "-flags", "low_delay",
         "-fflags", "nobuffer",
         "-probesize", "32",
         "-analyzeduration", "0",
         "-framedrop",
-        "-sync", "ext",
+        "-sync", "video",
         "-f", "h264",
         "-i", "-"
     ]
@@ -117,7 +117,8 @@ def main():
     try:
         ffplay_proc = subprocess.Popen(ffplay_cmd, stdin=subprocess.PIPE)
     except FileNotFoundError:
-        print("[Error] 'ffplay' not found. Please install FFmpeg on your laptop.")
+        print("\n[Notice] 'ffplay' was not found on your laptop PATH.")
+        print("Tip: You can use Option 1 in launch_laptop.bat to stream in borderless App Window without installing FFmpeg!")
         ws.close()
         return
 
@@ -132,16 +133,25 @@ def main():
 
     try:
         while True:
+            if ffplay_proc.poll() is not None:
+                print("\n[Player] ffplay window closed.")
+                break
             chunk = ws.recv()
             if isinstance(chunk, bytes):
-                ffplay_proc.stdin.write(chunk)
-                ffplay_proc.stdin.flush()
+                try:
+                    ffplay_proc.stdin.write(chunk)
+                    ffplay_proc.stdin.flush()
+                except (BrokenPipeError, OSError):
+                    break
     except (KeyboardInterrupt, websocket.WebSocketConnectionClosedException):
         print("\n[Disconnecting] Exiting stream...")
     finally:
         ws.close()
-        if ffplay_proc:
-            ffplay_proc.terminate()
+        if ffplay_proc and ffplay_proc.poll() is None:
+            try:
+                ffplay_proc.terminate()
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     main()
