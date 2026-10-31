@@ -32,4 +32,7 @@ Write-Host "Compiling enum_screens.cpp..." -ForegroundColor Yellow
 Write-Host "Compiling input_injector.cpp..." -ForegroundColor Yellow
 & $FoundGpp -O3 -static (Join-Path $NativeDir "input_injector.cpp") -luser32 -o (Join-Path $NativeDir "input_injector.exe")
 
+Write-Host "Compiling desktop_runner.cpp..." -ForegroundColor Yellow
+& $FoundGpp -O3 -static (Join-Path $NativeDir "desktop_runner.cpp") -o (Join-Path $NativeDir "desktop_runner.exe")
+
 Write-Host "All native components compiled successfully!" -ForegroundColor Green

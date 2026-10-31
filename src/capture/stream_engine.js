@@ -5,6 +5,7 @@ const displayManager = require('./display_manager');
 const InputSanitizer = require('../security/input_sanitizer');
 
 const INJECTOR_EXE = path.join(__dirname, 'native', 'input_injector.exe');
+const RUNNER_EXE = path.join(__dirname, 'native', 'desktop_runner.exe');
 
 class StreamEngine {
     constructor(config = {}) {
@@ -162,17 +163,26 @@ class StreamEngine {
             ...nvencArgs
         ];
 
-        console.log(`[StreamEngine] Starting hardware encoder for Display ${stream.displayId} (${stream.mode})...`);
+        const useRunner = fs.existsSync(RUNNER_EXE);
+        const spawnCmd = useRunner ? RUNNER_EXE : 'ffmpeg';
+        const spawnArgs = useRunner ? ['ffmpeg', ...ffmpegArgs] : ffmpegArgs;
+
+        console.log(`[StreamEngine] Starting hardware encoder for Display ${stream.displayId} (${stream.mode}) via ${useRunner ? 'desktop_runner' : 'ffmpeg'}...`);
 
         try {
-            const proc = spawn('ffmpeg', ffmpegArgs, {
+            const proc = spawn(spawnCmd, spawnArgs, {
                 stdio: ['ignore', 'pipe', 'pipe']
             });
 
             stream.ffmpeg = proc;
             let startedAt = Date.now();
+            let hasLoggedFrame = false;
 
             proc.stdout.on('data', (chunk) => {
+                if (!hasLoggedFrame) {
+                    console.log(`[StreamEngine] GPU frames successfully generated and streaming to Display ${stream.displayId} viewers!`);
+                    hasLoggedFrame = true;
+                }
                 // Broadcast video NAL units to all authenticated clients on this monitor
                 for (const client of stream.clients) {
                     if (client.readyState === 1 /* OPEN */) {

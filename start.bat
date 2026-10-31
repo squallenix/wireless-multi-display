@@ -24,8 +24,8 @@ if not exist "node_modules\ws" (
 )
 
 :: 3. Check and auto-compile native C++ binaries if missing
-if not exist "src\capture\native\enum_screens.exe" (
-    echo [Setup] Compiling native C++ screen enumerator and input injector...
+if not exist "src\capture\native\desktop_runner.exe" (
+    echo [Setup] Compiling native C++ screen enumerator, input injector, and desktop runner...
     powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\compile_native.ps1"
     echo.
 )

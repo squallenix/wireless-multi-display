@@ -326,13 +326,30 @@
             }
 
             if (!isDecoderConfigured && spsUnit && ppsUnit) {
-                // Configure hardware decoder
-                videoDecoder.configure({
-                    codec: 'avc1.42E01F', // H.264 Baseline Level 3.1
-                    optimizeForLatency: true
-                });
-                isDecoderConfigured = true;
-                console.log('[WebCodecs] Configured H.264 hardware decoder.');
+                // Dynamically extract codec profile from SPS bytes
+                let codecStr = 'avc1.42e01f';
+                if (spsUnit.length >= 4) {
+                    const p = spsUnit[1].toString(16).padStart(2, '0');
+                    const c = spsUnit[2].toString(16).padStart(2, '0');
+                    const l = spsUnit[3].toString(16).padStart(2, '0');
+                    codecStr = `avc1.${p}${c}${l}`.toLowerCase();
+                }
+
+                try {
+                    videoDecoder.configure({
+                        codec: codecStr,
+                        optimizeForLatency: true
+                    });
+                    isDecoderConfigured = true;
+                    console.log(`[WebCodecs] Configured H.264 decoder with codec ${codecStr}`);
+                } catch (e) {
+                    console.warn('[WebCodecs] Initial configure error, falling back to baseline:', e);
+                    videoDecoder.configure({
+                        codec: 'avc1.42e01f',
+                        optimizeForLatency: true
+                    });
+                    isDecoderConfigured = true;
+                }
             }
 
             if (isDecoderConfigured) {
@@ -340,10 +357,34 @@
                 const isDelta = (nalType === 1);
 
                 if (isKey || isDelta) {
-                    // Prepend standard start code for Annex-B chunk
-                    const fullChunk = new Uint8Array(4 + nal.length);
-                    fullChunk[0] = 0; fullChunk[1] = 0; fullChunk[2] = 0; fullChunk[3] = 1;
-                    fullChunk.set(nal, 4);
+                    let fullChunk;
+                    if (isKey && spsUnit && ppsUnit) {
+                        // Prepend SPS and PPS to IDR keyframe for guaranteed decoding across all devices
+                        const totalLen = (4 + spsUnit.length) + (4 + ppsUnit.length) + (4 + nal.length);
+                        fullChunk = new Uint8Array(totalLen);
+                        let offset = 0;
+
+                        // SPS
+                        fullChunk[offset] = 0; fullChunk[offset+1] = 0; fullChunk[offset+2] = 0; fullChunk[offset+3] = 1;
+                        offset += 4;
+                        fullChunk.set(spsUnit, offset);
+                        offset += spsUnit.length;
+
+                        // PPS
+                        fullChunk[offset] = 0; fullChunk[offset+1] = 0; fullChunk[offset+2] = 0; fullChunk[offset+3] = 1;
+                        offset += 4;
+                        fullChunk.set(ppsUnit, offset);
+                        offset += ppsUnit.length;
+
+                        // IDR NAL
+                        fullChunk[offset] = 0; fullChunk[offset+1] = 0; fullChunk[offset+2] = 0; fullChunk[offset+3] = 1;
+                        offset += 4;
+                        fullChunk.set(nal, offset);
+                    } else {
+                        fullChunk = new Uint8Array(4 + nal.length);
+                        fullChunk[0] = 0; fullChunk[1] = 0; fullChunk[2] = 0; fullChunk[3] = 1;
+                        fullChunk.set(nal, 4);
+                    }
 
                     try {
                         videoDecoder.decode(new EncodedVideoChunk({
@@ -352,7 +393,7 @@
                             data: fullChunk
                         }));
                     } catch (e) {
-                        // ignore chunk decode error during init
+                        console.error('[WebCodecs Decode Error]', e);
                     }
                 }
             }
