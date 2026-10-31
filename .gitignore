@@ -22,6 +22,7 @@ src/capture/native/*.exe
 
 # Downloaded Drivers & Archives
 drivers/
+releases/
 *.zip
 *.tar.gz
 *.apk
