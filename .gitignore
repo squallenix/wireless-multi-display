@@ -24,6 +24,13 @@ src/capture/native/*.exe
 drivers/
 *.zip
 *.tar.gz
+*.apk
+
+# Android Build Outputs
+.gradle/
+android-receiver/.gradle/
+android-receiver/app/build/
+android-receiver/local.properties
 
 # Environment & Local Config Overrides
 .env
