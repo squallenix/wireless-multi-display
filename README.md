@@ -147,3 +147,14 @@ You can tune performance in `config.json`:
 
 - For **5GHz / 6GHz Wi-Fi or Ethernet**, `15M` to `20M` bitrate provides crisp, cable-quality text.
 - For slower 2.4GHz Wi-Fi, reduce `"bitrate": "8M"`.
+
+---
+
+## ⚖️ License & Legal Disclaimer
+
+This project is licensed under the **[Apache License 2.0](LICENSE)**.
+
+### Disclaimer of Liability
+This software is provided strictly on an **"AS IS"** basis without warranties of any kind. Screen capture, video streaming, hardware drivers, and remote input injection carry inherent operational risks. By using this software, you agree that the authors and contributors bear **zero liability** for any damages, hardware issues, data loss, security incidents, or system instability.
+
+For complete legal terms, warranty disclaimers, and trademark notices, please read **[DISCLAIMER.md](DISCLAIMER.md)**.
