@@ -1,6 +1,6 @@
 /**
  * AegisDisplay Client Controller
- * WebCodecs Ultra-Low Latency Video Decoder & PWA Controller
+ * WebCodecs Ultra-Low Latency Video Decoder & Diagnostics HUD
  */
 
 (() => {
@@ -9,11 +9,35 @@
     let selectedDisplayId = null;
     let videoDecoder = null;
     let isDecoderConfigured = false;
+    let hasReceivedKeyFrame = false;
+    let isSubscribed = false;
     let nalBuffer = new Uint8Array(0);
     let spsUnit = null;
     let ppsUnit = null;
     let wakeLock = null;
     let deferredInstallPrompt = null;
+    let pingInterval = null;
+    let reconnectTimeout = null;
+    let fpsCounter = 0;
+    let lastFpsUpdate = Date.now();
+    let touchHandler = null;
+
+    // Diagnostic Metrics
+    const diag = {
+        hostStatus: 'Initializing...',
+        authStatus: 'Unverified',
+        displayId: 'None',
+        decoderState: 'Uninitialized',
+        codecStr: '--',
+        chunksReceived: 0,
+        bytesReceived: 0,
+        spsCount: 0,
+        ppsCount: 0,
+        keyCount: 0,
+        deltaCount: 0,
+        renderedFrames: 0,
+        lastError: null
+    };
 
     // UI Elements
     const authPanel = document.getElementById('auth-panel');
@@ -27,23 +51,100 @@
     const displayCanvas = document.getElementById('display-canvas');
     const ctx = displayCanvas.getContext('2d');
     const streamLoading = document.getElementById('stream-loading');
+    const streamSpinner = document.getElementById('stream-spinner');
+    const streamStatusTitle = document.getElementById('stream-status-title');
+    const streamStatusSub = document.getElementById('stream-status-sub');
+    const btnForceReconnect = document.getElementById('btn-force-reconnect');
+    const btnRePair = document.getElementById('btn-re-pair');
+    const btnShowDebug = document.getElementById('btn-show-debug');
     const statsChip = document.getElementById('stats-chip');
+    const statDot = document.getElementById('stat-dot');
     const statFps = document.getElementById('stat-fps');
     const statLatency = document.getElementById('stat-latency');
+    const btnToggleDebug = document.getElementById('btn-toggle-debug');
+    const debugOverlay = document.getElementById('debug-overlay');
+    const btnCloseDebug = document.getElementById('btn-close-debug');
     const btnFullscreen = document.getElementById('btn-fullscreen-toggle');
     const floatingFsBtn = document.getElementById('floating-fs-btn');
     const btnDisconnect = document.getElementById('btn-disconnect');
     const btnInstallApp = document.getElementById('btn-install-app');
 
-    let isSubscribed = false;
-    let pingInterval = null;
-    let hasReceivedKeyFrame = false;
+    // Diagnostic Elements
+    const diagHostStatus = document.getElementById('diag-host-status');
+    const diagAuthStatus = document.getElementById('diag-auth-status');
+    const diagDisplayId = document.getElementById('diag-display-id');
+    const diagDecoderState = document.getElementById('diag-decoder-state');
+    const diagCodecStr = document.getElementById('diag-codec-str');
+    const diagNetworkData = document.getElementById('diag-network-data');
+    const diagNalsInfo = document.getElementById('diag-nals-info');
+    const diagRenderedFrames = document.getElementById('diag-rendered-frames');
+    const debugLogConsole = document.getElementById('debug-log-console');
 
-    // 1. Service Worker & PWA Install Support
+    // 0. Live Diagnostics Logger
+    function logDiag(message, type = 'info') {
+        const time = new Date().toLocaleTimeString();
+        console.log(`[${time}] [${type.toUpperCase()}] ${message}`);
+
+        if (debugLogConsole) {
+            const row = document.createElement('div');
+            row.className = `log-entry log-${type}`;
+            row.textContent = `[${time}] ${message}`;
+            debugLogConsole.appendChild(row);
+            debugLogConsole.scrollTop = debugLogConsole.scrollHeight;
+        }
+
+        updateDiagUI();
+    }
+
+    function updateDiagUI() {
+        if (diagHostStatus) diagHostStatus.textContent = diag.hostStatus;
+        if (diagAuthStatus) diagAuthStatus.textContent = diag.authStatus;
+        if (diagDisplayId) diagDisplayId.textContent = diag.displayId;
+        if (diagDecoderState) diagDecoderState.textContent = diag.decoderState;
+        if (diagCodecStr) diagCodecStr.textContent = diag.codecStr;
+        if (diagNetworkData) {
+            const kb = Math.round(diag.bytesReceived / 1024);
+            const mb = (diag.bytesReceived / (1024 * 1024)).toFixed(1);
+            const sizeStr = mb >= 1 ? `${mb} MB` : `${kb} KB`;
+            diagNetworkData.textContent = `${diag.chunksReceived} chunks (${sizeStr})`;
+        }
+        if (diagNalsInfo) {
+            diagNalsInfo.textContent = `SPS: ${diag.spsCount}, PPS: ${diag.ppsCount}, IDR: ${diag.keyCount}, P: ${diag.deltaCount}`;
+        }
+        if (diagRenderedFrames) diagRenderedFrames.textContent = diag.renderedFrames;
+    }
+
+    function setStatusOverlay(title, sub, showSpinner = true, showReconnect = false, showPair = false) {
+        if (streamStatusTitle) streamStatusTitle.textContent = title;
+        if (streamStatusSub) streamStatusSub.textContent = sub;
+        if (streamSpinner) streamSpinner.style.display = showSpinner ? 'block' : 'none';
+        if (btnForceReconnect) btnForceReconnect.style.display = showReconnect ? 'inline-block' : 'none';
+        if (btnRePair) btnRePair.style.display = showPair ? 'inline-block' : 'none';
+    }
+
+    // Toggle Diagnostics HUD
+    function toggleDebugOverlay() {
+        if (!debugOverlay) return;
+        const isHidden = (debugOverlay.style.display === 'none' || !debugOverlay.style.display);
+        debugOverlay.style.display = isHidden ? 'flex' : 'none';
+    }
+
+    if (btnToggleDebug) btnToggleDebug.addEventListener('click', toggleDebugOverlay);
+    if (btnShowDebug) btnShowDebug.addEventListener('click', toggleDebugOverlay);
+    if (btnCloseDebug) btnCloseDebug.addEventListener('click', () => { debugOverlay.style.display = 'none'; });
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'd' || e.key === 'D') {
+            if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+            toggleDebugOverlay();
+        }
+    });
+
+    // 1. Service Worker & PWA Installation
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/sw.js').catch((err) => {
-                console.log('[SW] Service worker registration note:', err.message);
+                logDiag(`ServiceWorker note: ${err.message}`, 'warn');
             });
         });
     }
@@ -57,7 +158,7 @@
                 if (deferredInstallPrompt) {
                     deferredInstallPrompt.prompt();
                     const { outcome } = await deferredInstallPrompt.userChoice;
-                    console.log(`[PWA] Install prompt outcome: ${outcome}`);
+                    logDiag(`PWA Install prompt outcome: ${outcome}`, 'info');
                     deferredInstallPrompt = null;
                     btnInstallApp.style.display = 'none';
                 }
@@ -65,17 +166,15 @@
         }
     });
 
-    // 2. Screen Wake Lock (Prevents laptop/phone screen from sleeping)
+    // 2. Screen Wake Lock
     async function acquireWakeLock() {
         if ('wakeLock' in navigator) {
             try {
                 wakeLock = await navigator.wakeLock.request('screen');
-                console.log('[WakeLock] Screen wake lock acquired. Screen will not sleep.');
-                wakeLock.addEventListener('release', () => {
-                    wakeLock = null;
-                });
+                logDiag('Screen Wake Lock acquired (display will not sleep).', 'info');
+                wakeLock.addEventListener('release', () => { wakeLock = null; });
             } catch (err) {
-                console.warn('[WakeLock] Could not acquire wake lock:', err.message);
+                logDiag(`WakeLock note: ${err.message}`, 'warn');
             }
         }
     }
@@ -89,38 +188,113 @@
 
     // 3. Connect Secure WebSocket (WSS)
     function connectWebSocket() {
+        if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
+        }
+
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const url = `${proto}//${window.location.host}/ws`;
 
-        ws = new WebSocket(url);
-        ws.binaryType = 'arraybuffer';
+        logDiag(`Connecting to Host at ${url}...`, 'info');
+        diag.hostStatus = 'Connecting...';
+        setStatusOverlay('Connecting to Host PC...', `Contacting ${window.location.host}...`, true, false, false);
+
+        try {
+            ws = new WebSocket(url);
+            ws.binaryType = 'arraybuffer';
+        } catch (err) {
+            handleConnectionFailure(`Socket creation error: ${err.message}`);
+            return;
+        }
 
         ws.onopen = () => {
-            console.log('[WebSocket] Secure connection established.');
+            logDiag('WebSocket secure connection ESTABLISHED!', 'success');
+            diag.hostStatus = '🟢 Connected';
+            if (statDot) statDot.style.backgroundColor = '#238636';
+
             const savedToken = sessionStorage.getItem('aegis_token');
             if (savedToken) {
+                logDiag('Found saved session token. Verifying session with host...', 'info');
                 sessionToken = savedToken;
+                diag.authStatus = 'Verifying...';
+                setStatusOverlay('Verifying Session...', 'Restoring your previous device pairing...', true, false, false);
                 requestDisplays();
+            } else {
+                diag.authStatus = 'Waiting for PIN';
+                if (viewportPanel.style.display !== 'flex') {
+                    authPanel.style.display = 'block';
+                    displayPanel.style.display = 'none';
+                } else {
+                    setStatusOverlay('Device Pairing Required', 'Please enter your Host PC PIN.', false, false, true);
+                }
             }
         };
 
         ws.onmessage = (event) => {
             if (typeof event.data === 'string') {
-                handleJsonMessage(JSON.parse(event.data));
+                try {
+                    handleJsonMessage(JSON.parse(event.data));
+                } catch (e) {
+                    logDiag(`Malformed JSON message: ${e.message}`, 'warn');
+                }
             } else if (event.data instanceof ArrayBuffer) {
                 handleBinaryVideoChunk(new Uint8Array(event.data));
             }
         };
 
-        ws.onclose = () => {
-            console.warn('[WebSocket] Connection closed.');
-            releaseWakeLock();
-            showAuthError('Disconnected from host server. Please refresh.');
+        ws.onclose = (event) => {
+            handleConnectionFailure(`Disconnected from host (code: ${event.code})`);
         };
 
         ws.onerror = (err) => {
-            console.error('[WebSocket] Error:', err);
+            handleConnectionFailure('WebSocket encountered network error');
         };
+    }
+
+    function handleConnectionFailure(reason) {
+        logDiag(`Connection Alert: ${reason}`, 'warn');
+        diag.hostStatus = '🔴 Disconnected';
+        if (statDot) statDot.style.backgroundColor = '#da3633';
+        if (statLatency) statLatency.textContent = 'Offline';
+
+        setStatusOverlay(
+            '🔴 Host PC Offline',
+            `Could not reach host at ${window.location.host}. Make sure start.bat is running on your Host PC.`,
+            false,
+            true,
+            true
+        );
+
+        releaseWakeLock();
+
+        // Schedule auto-reconnect
+        if (!reconnectTimeout) {
+            reconnectTimeout = setTimeout(() => {
+                logDiag('Auto-reconnecting to host...', 'info');
+                connectWebSocket();
+            }, 3000);
+        }
+    }
+
+    if (btnForceReconnect) {
+        btnForceReconnect.addEventListener('click', () => {
+            logDiag('User clicked manual reconnect.', 'info');
+            connectWebSocket();
+        });
+    }
+
+    if (btnRePair) {
+        btnRePair.addEventListener('click', () => {
+            sessionStorage.removeItem('aegis_token');
+            sessionToken = null;
+            isSubscribed = false;
+            selectedDisplayId = null;
+            viewportPanel.style.display = 'none';
+            displayPanel.style.display = 'none';
+            authPanel.style.display = 'block';
+            hideAuthError();
+        });
     }
 
     function sendJson(msg) {
@@ -148,6 +322,9 @@
         }
 
         hideAuthError();
+        logDiag(`Submitting PIN [${pin}] to host server...`, 'info');
+        diag.authStatus = 'Authenticating...';
+
         sendJson({
             type: 'auth',
             pin: pin,
@@ -161,7 +338,8 @@
             case 'auth_success':
                 sessionToken = msg.token;
                 sessionStorage.setItem('aegis_token', msg.token);
-                console.log('[Auth] Authenticated successfully with host.');
+                diag.authStatus = '🟢 Paired (Verified)';
+                logDiag('Pairing SUCCESS! Session token acquired.', 'success');
                 authPanel.style.display = 'none';
                 displayPanel.style.display = 'block';
                 requestDisplays();
@@ -169,6 +347,8 @@
 
             case 'auth_failure':
                 sessionStorage.removeItem('aegis_token');
+                diag.authStatus = '🔴 Auth Failed';
+                logDiag(`Authentication FAILED: ${msg.error}`, 'error');
                 showAuthError(msg.error || 'Authentication failed.');
                 break;
 
@@ -185,24 +365,26 @@
                 break;
 
             case 'error':
+                logDiag(`Host Error: ${msg.message}`, 'error');
                 if (msg.message && msg.message.toLowerCase().includes('unauthorized')) {
                     sessionStorage.removeItem('aegis_token');
                     sessionToken = null;
                     isSubscribed = false;
                     selectedDisplayId = null;
+                    diag.authStatus = 'Session Expired';
                     if (pingInterval) clearInterval(pingInterval);
                     authPanel.style.display = 'block';
                     displayPanel.style.display = 'none';
                     viewportPanel.style.display = 'none';
                     statsChip.style.display = 'none';
-                    showAuthError('Session expired or host restarted. Please enter the current PIN.');
+                    showAuthError('Session expired or host restarted. Enter current terminal PIN.');
                 }
-                console.error(`Host Error: ${msg.message}`);
                 break;
         }
     }
 
     function requestDisplays() {
+        logDiag('Requesting active displays list from host...', 'info');
         sendJson({
             type: 'get_displays',
             token: sessionToken
@@ -214,15 +396,17 @@
     function renderDisplays(displays) {
         displayList.innerHTML = '';
         if (!displays || displays.length === 0) {
-            displayList.innerHTML = '<p style="color:#8b949e;">No active displays detected.</p>';
+            displayList.innerHTML = '<p style="color:#8b949e;">No active displays detected on host.</p>';
+            logDiag('Host returned 0 active displays.', 'warn');
             return;
         }
 
-        // Auto-detect Extended Monitor:
-        // Automatically select the extended screen (isPrimary === false) without requiring manual clicks
+        logDiag(`Host detected ${displays.length} monitor(s): ${displays.map(d => `${d.name} (${d.width}x${d.height}, Primary: ${d.isPrimary})`).join(', ')}`, 'info');
+
+        // Auto-detect Extended Monitor (isPrimary === false)
         const targetDisplay = displays.find(d => !d.isPrimary) || displays[0];
         if (targetDisplay && !isSubscribed) {
-            console.log(`[AutoDetect] Auto-selecting display: ${targetDisplay.name} (${targetDisplay.width}x${targetDisplay.height}, Primary: ${targetDisplay.isPrimary})`);
+            logDiag(`Auto-selecting display: ${targetDisplay.name} (${targetDisplay.width}x${targetDisplay.height})`, 'success');
             selectDisplay(targetDisplay.id, targetDisplay);
             return;
         }
@@ -248,9 +432,17 @@
         if (isSubscribed && selectedDisplayId === id) return;
         isSubscribed = true;
         selectedDisplayId = id;
+        diag.displayId = `Display ${id} (${displayInfo ? `${displayInfo.width}x${displayInfo.height}` : 'Active'})`;
+
         displayPanel.style.display = 'none';
         viewportPanel.style.display = 'flex';
         statsChip.style.display = 'flex';
+
+        setStatusOverlay(
+            `Connecting to Display ${id}...`,
+            'Starting NVIDIA GPU hardware encoder and requesting video stream...',
+            true, false, false
+        );
 
         acquireWakeLock();
         initWebCodecsDecoder();
@@ -268,6 +460,7 @@
         }
 
         // Subscribe to display video stream
+        logDiag(`Subscribing to Display ${id} stream...`, 'info');
         sendJson({
             type: 'select_display',
             token: sessionToken,
@@ -286,23 +479,25 @@
 
     // Step 3: WebCodecs Hardware Video Decoding
     function resetDecoder() {
-        console.warn('[WebCodecs] Resetting decoder state...');
+        logDiag('Resetting WebCodecs decoder state...', 'warn');
         isDecoderConfigured = false;
         hasReceivedKeyFrame = false;
         spsUnit = null;
         ppsUnit = null;
         nalBuffer = new Uint8Array(0);
+        diag.decoderState = 'Resetting...';
+
         if (videoDecoder && videoDecoder.state !== 'closed') {
-            try {
-                videoDecoder.close();
-            } catch {}
+            try { videoDecoder.close(); } catch {}
         }
         initWebCodecsDecoder();
     }
 
     function initWebCodecsDecoder() {
         if (!('VideoDecoder' in window)) {
-            alert('Your browser does not support WebCodecs. Please update to a modern browser (Chrome, Edge, Safari 16.4+, Opera).');
+            const err = 'Your browser does not support WebCodecs. Please update Chrome, Edge, Safari 16.4+, or Opera.';
+            logDiag(err, 'error');
+            alert(err);
             return;
         }
 
@@ -318,8 +513,12 @@
                     ctx.drawImage(videoFrame, 0, 0, displayCanvas.width, displayCanvas.height);
                     videoFrame.close();
 
-                    if (streamLoading) streamLoading.style.display = 'none';
+                    if (streamLoading && streamLoading.style.display !== 'none') {
+                        streamLoading.style.display = 'none';
+                        logDiag(`First video frame displayed on canvas! (${displayCanvas.width}x${displayCanvas.height})`, 'success');
+                    }
 
+                    diag.renderedFrames++;
                     fpsCounter++;
                     const now = Date.now();
                     if (now - lastFpsUpdate >= 1000) {
@@ -327,14 +526,19 @@
                         fpsCounter = 0;
                         lastFpsUpdate = now;
                     }
+                    updateDiagUI();
                 },
                 error: (err) => {
-                    console.error('[WebCodecs Decoder Fatal Error]', err);
+                    logDiag(`WebCodecs Fatal Error: ${err.message}`, 'error');
+                    diag.decoderState = `🔴 Error: ${err.message}`;
                     resetDecoder();
                 }
             });
+            diag.decoderState = 'Ready (Awaiting SPS/PPS)';
+            logDiag('WebCodecs VideoDecoder initialized and ready.', 'info');
         } catch (e) {
-            console.error('[WebCodecs Init Error]', e);
+            logDiag(`WebCodecs Init Exception: ${e.message}`, 'error');
+            diag.decoderState = `Init Failed: ${e.message}`;
         }
     }
 
@@ -365,9 +569,12 @@
     function handleBinaryVideoChunk(chunk) {
         if (!videoDecoder) return;
 
+        diag.chunksReceived++;
+        diag.bytesReceived += chunk.length;
+
         // Prevent memory overflow on unbounded buffer
         if (nalBuffer.length > 8 * 1024 * 1024) {
-            console.warn('[Stream] Clearing oversize buffer');
+            logDiag('Stream buffer exceeded 8MB, resetting buffer.', 'warn');
             nalBuffer = new Uint8Array(0);
         }
 
@@ -379,7 +586,6 @@
 
         const startCodes = findStartCodes(nalBuffer);
         if (startCodes.length < 2) {
-            // Need at least 2 start codes to delineate a full NAL unit
             return;
         }
 
@@ -391,7 +597,6 @@
                 nalUnits.push(nalBuffer.subarray(start, end));
             }
         }
-        // Retain remaining data from the last start code onward
         nalBuffer = nalBuffer.subarray(startCodes[startCodes.length - 1].index);
 
         for (const nal of nalUnits) {
@@ -400,12 +605,18 @@
 
             if (nalType === 7) { // SPS
                 spsUnit = nal;
+                diag.spsCount++;
             } else if (nalType === 8) { // PPS
                 ppsUnit = nal;
+                diag.ppsCount++;
+            } else if (nalType === 5) {
+                diag.keyCount++;
+            } else if (nalType === 1) {
+                diag.deltaCount++;
             }
 
+            // Configure decoder on first SPS/PPS pair
             if (!isDecoderConfigured && spsUnit && ppsUnit) {
-                // Dynamically extract codec profile from SPS bytes
                 let codecStr = 'avc1.42e01f';
                 if (spsUnit.length >= 4) {
                     const p = spsUnit[1].toString(16).padStart(2, '0');
@@ -414,20 +625,23 @@
                     codecStr = `avc1.${p}${c}${l}`.toLowerCase();
                 }
 
+                diag.codecStr = codecStr;
                 try {
                     videoDecoder.configure({
                         codec: codecStr,
                         optimizeForLatency: true
                     });
                     isDecoderConfigured = true;
-                    console.log(`[WebCodecs] Configured H.264 decoder with codec ${codecStr}`);
+                    diag.decoderState = `🟢 Configured (${codecStr})`;
+                    logDiag(`Configured H.264 decoder with codec: ${codecStr}`, 'success');
                 } catch (e) {
-                    console.warn('[WebCodecs] Initial configure error, falling back to baseline:', e);
+                    logDiag(`Configure error for ${codecStr}, falling back to baseline: ${e.message}`, 'warn');
                     videoDecoder.configure({
                         codec: 'avc1.42e01f',
                         optimizeForLatency: true
                     });
                     isDecoderConfigured = true;
+                    diag.decoderState = '🟢 Baseline Configured';
                 }
             }
 
@@ -437,18 +651,17 @@
 
                 if (!isKey && !isDelta) continue;
 
-                // Essential: WebCodecs cannot decode a delta frame before the first keyframe!
+                // Essential: WebCodecs closes with DataError if fed delta before first keyframe!
                 if (!hasReceivedKeyFrame) {
                     if (!isKey) {
                         continue; // Discard delta frames until the first keyframe arrives
                     }
                     hasReceivedKeyFrame = true;
-                    console.log('[WebCodecs] First IDR Keyframe received, starting playback!');
+                    logDiag('First IDR Keyframe received! Beginning live decode.', 'success');
                 }
 
                 let fullChunk;
                 if (isKey && spsUnit && ppsUnit) {
-                    // Prepend SPS and PPS to IDR keyframe for guaranteed decoding across all devices
                     const totalLen = (4 + spsUnit.length) + (4 + ppsUnit.length) + (4 + nal.length);
                     fullChunk = new Uint8Array(totalLen);
                     let offset = 0;
@@ -482,13 +695,24 @@
                         data: fullChunk
                     }));
                 } catch (e) {
-                    console.error('[WebCodecs Decode Error]', e);
+                    logDiag(`Decode Error: ${e.message}`, 'error');
                     if (videoDecoder && videoDecoder.state === 'closed') {
                         resetDecoder();
                     }
                 }
             }
         }
+
+        // Update progress in overlay while still waiting for initial frame
+        if (streamLoading && streamLoading.style.display !== 'none' && diag.chunksReceived > 0) {
+            setStatusOverlay(
+                'Receiving Video Stream...',
+                `Received ${diag.chunksReceived} chunks (${Math.round(diag.bytesReceived / 1024)} KB). Synchronizing GPU keyframe...`,
+                true, false, false
+            );
+        }
+
+        updateDiagUI();
     }
 
     // Fullscreen & Orientation Lock

@@ -27,10 +27,11 @@
             <button id="btn-install-app" class="btn-install" style="display: none;">📲 Install App</button>
         </div>
         <div class="stats-chip" id="stats-chip" style="display: none;">
-            <span class="dot"></span>
+            <span class="dot" id="stat-dot"></span>
             <span id="stat-fps">0 FPS</span>
             <span class="sep">•</span>
             <span id="stat-latency">-- ms</span>
+            <button id="btn-toggle-debug" class="btn-sm" style="color:#8b949e;background:#161b22;" title="Toggle Diagnostics">🛠️ Debug</button>
             <button id="btn-switch-display" class="btn-sm" style="color:#58a6ff;">Switch Screen</button>
             <button id="btn-fullscreen-toggle" title="Toggle Fullscreen">⛶ Fullscreen</button>
             <button id="btn-disconnect" class="btn-sm">Disconnect</button>
@@ -80,15 +81,41 @@
         <section id="viewport-panel" style="display: none;">
             <canvas id="display-canvas"></canvas>
             <div id="stream-loading" class="overlay-msg">
-                <div class="spinner"></div>
-                <p>Waiting for GPU frame stream...</p>
+                <div class="spinner" id="stream-spinner"></div>
+                <h3 id="stream-status-title" style="font-size:1.1rem;color:#f0f6fc;margin-top:4px;">Connecting to Host PC...</h3>
+                <p id="stream-status-sub" style="font-size:0.85rem;color:#8b949e;max-width:440px;text-align:center;line-height:1.4;">Initializing secure WebSocket connection...</p>
+                <div id="stream-actions" style="margin-top:10px;display:flex;gap:10px;">
+                    <button id="btn-force-reconnect" class="btn-sm" style="display:none;background:#238636;color:#fff;padding:6px 14px;">🔄 Reconnect Now</button>
+                    <button id="btn-re-pair" class="btn-sm" style="display:none;background:#21262d;color:#58a6ff;padding:6px 14px;">🔑 Re-enter PIN</button>
+                    <button id="btn-show-debug" class="btn-sm" style="background:#21262d;color:#8b949e;padding:6px 12px;">🛠️ Diagnostics</button>
+                </div>
             </div>
             <!-- Floating Fullscreen Shortcut for Touch/Mobile -->
             <button id="floating-fs-btn" class="floating-btn" title="Fullscreen">⛶</button>
         </section>
+
+        <!-- Live Diagnostics & Debug HUD -->
+        <div id="debug-overlay" style="display:none;" class="debug-hud">
+            <div class="debug-header">
+                <span>🛠️ AegisDisplay Live Diagnostics</span>
+                <button id="btn-close-debug" class="btn-close" title="Close Diagnostics">×</button>
+            </div>
+            <div class="debug-grid">
+                <div>Host Server: <span id="diag-host-status" class="diag-val">Connecting...</span></div>
+                <div>Auth Session: <span id="diag-auth-status" class="diag-val">Unverified</span></div>
+                <div>Active Display: <span id="diag-display-id" class="diag-val">None</span></div>
+                <div>WebCodecs Decoder: <span id="diag-decoder-state" class="diag-val">Uninitialized</span></div>
+                <div>Codec String: <span id="diag-codec-str" class="diag-val">--</span></div>
+                <div>Network Stream: <span id="diag-network-data" class="diag-val">0 chunks (0 KB)</span></div>
+                <div>H.264 NALs: <span id="diag-nals-info" class="diag-val">SPS: 0, PPS: 0, IDR: 0, P: 0</span></div>
+                <div>Rendered Frames: <span id="diag-rendered-frames" class="diag-val">0</span></div>
+            </div>
+            <div class="debug-logs-header">Live Event Log:</div>
+            <div id="debug-log-console" class="debug-console"></div>
+        </div>
     </main>
 
-    <script src="touch_handler.js?v=2.1"></script>
-    <script src="app.js?v=2.1"></script>
+    <script src="touch_handler.js?v=2.2"></script>
+    <script src="app.js?v=2.2"></script>
 </body>
 </html>

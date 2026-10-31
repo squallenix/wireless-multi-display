@@ -326,3 +326,102 @@ body {
 :-webkit-full-screen #top-bar {
     display: none !important;
 }
+
+/* Live Diagnostics HUD */
+.debug-hud {
+    position: absolute;
+    bottom: 24px;
+    left: 24px;
+    width: 440px;
+    max-width: calc(100vw - 48px);
+    max-height: 400px;
+    background: rgba(13, 17, 23, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8rem;
+    color: #e6edf3;
+    overflow: hidden;
+}
+
+.debug-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    font-weight: 600;
+    color: #58a6ff;
+}
+
+.debug-header .btn-close {
+    background: transparent;
+    border: none;
+    color: #8b949e;
+    font-size: 1.3rem;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.debug-header .btn-close:hover {
+    color: #f0f6fc;
+}
+
+.debug-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #21262d;
+    background: #0d1117;
+}
+
+.diag-val {
+    font-family: Consolas, monospace;
+    font-weight: 600;
+    color: #58a6ff;
+}
+
+.debug-logs-header {
+    padding: 8px 14px 4px 14px;
+    font-size: 0.75rem;
+    color: #8b949e;
+    font-weight: 600;
+}
+
+.debug-console {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 14px 10px 14px;
+    font-family: Consolas, monospace;
+    font-size: 0.73rem;
+    line-height: 1.45;
+    color: #8b949e;
+    max-height: 140px;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.debug-console .log-entry {
+    border-bottom: 1px solid rgba(48, 54, 61, 0.25);
+    padding: 2px 0;
+}
+
+.debug-console .log-error {
+    color: #ff7b72;
+    font-weight: 600;
+}
+
+.debug-console .log-warn {
+    color: #d29922;
+}
+
+.debug-console .log-success {
+    color: #3fb950;
+    font-weight: 600;
+}

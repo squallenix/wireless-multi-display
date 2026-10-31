@@ -64,6 +64,21 @@ function handleHttpRequest(req, res) {
     res.setHeader('Expires', '0');
 
     const cleanPath = req.url.split('?')[0];
+
+    // Health & diagnostic status endpoint
+    if (cleanPath === '/api/status' || cleanPath === '/status') {
+        const statusData = {
+            status: 'online',
+            uptimeSeconds: Math.round(process.uptime()),
+            displays: displayManager.getDisplays(),
+            activeStreams: streamEngine.activeStreams.size,
+            activePin: auth.currentPin
+        };
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(statusData, null, 2));
+        return;
+    }
+
     const relativePath = (cleanPath === '/' || cleanPath === '') ? 'index.html' : cleanPath.replace(/^\//, '');
     let filePath = path.join(PUBLIC_DIR, relativePath);
 
