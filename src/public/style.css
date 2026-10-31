@@ -34,8 +34,10 @@ body {
     gap: 10px;
 }
 
-.brand .icon {
-    font-size: 1.4rem;
+.app-logo {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
 }
 
 .brand .title {
@@ -43,6 +45,22 @@ body {
     font-size: 1.1rem;
     letter-spacing: -0.3px;
     color: #58a6ff;
+}
+
+.btn-install {
+    background: #238636;
+    color: #ffffff;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-install:hover {
+    background: #2ea043;
 }
 
 .badge {

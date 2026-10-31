@@ -1,6 +1,6 @@
 /**
  * AegisDisplay Client Controller
- * WebCodecs Ultra-Low Latency Video Decoder & Secure Controller
+ * WebCodecs Ultra-Low Latency Video Decoder & PWA Controller
  */
 
 (() => {
@@ -12,6 +12,8 @@
     let nalBuffer = new Uint8Array(0);
     let spsUnit = null;
     let ppsUnit = null;
+    let wakeLock = null;
+    let deferredInstallPrompt = null;
 
     // UI Elements
     const authPanel = document.getElementById('auth-panel');
@@ -31,12 +33,61 @@
     const btnFullscreen = document.getElementById('btn-fullscreen-toggle');
     const floatingFsBtn = document.getElementById('floating-fs-btn');
     const btnDisconnect = document.getElementById('btn-disconnect');
+    const btnInstallApp = document.getElementById('btn-install-app');
 
     let fpsCounter = 0;
     let lastFpsUpdate = Date.now();
     let touchHandler = null;
 
-    // Connect Secure WebSocket (WSS)
+    // 1. Service Worker & PWA Install Support
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch((err) => {
+                console.log('[SW] Service worker registration note:', err.message);
+            });
+        });
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        if (btnInstallApp) {
+            btnInstallApp.style.display = 'inline-block';
+            btnInstallApp.addEventListener('click', async () => {
+                if (deferredInstallPrompt) {
+                    deferredInstallPrompt.prompt();
+                    const { outcome } = await deferredInstallPrompt.userChoice;
+                    console.log(`[PWA] Install prompt outcome: ${outcome}`);
+                    deferredInstallPrompt = null;
+                    btnInstallApp.style.display = 'none';
+                }
+            });
+        }
+    });
+
+    // 2. Screen Wake Lock (Prevents laptop/phone screen from sleeping)
+    async function acquireWakeLock() {
+        if ('wakeLock' in navigator) {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log('[WakeLock] Screen wake lock acquired. Screen will not sleep.');
+                wakeLock.addEventListener('release', () => {
+                    wakeLock = null;
+                });
+            } catch (err) {
+                console.warn('[WakeLock] Could not acquire wake lock:', err.message);
+            }
+        }
+    }
+
+    function releaseWakeLock() {
+        if (wakeLock) {
+            wakeLock.release().catch(() => {});
+            wakeLock = null;
+        }
+    }
+
+    // 3. Connect Secure WebSocket (WSS)
     function connectWebSocket() {
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const url = `${proto}//${window.location.host}/ws`;
@@ -58,6 +109,7 @@
 
         ws.onclose = () => {
             console.warn('[WebSocket] Connection closed.');
+            releaseWakeLock();
             showAuthError('Disconnected from host server. Please refresh.');
         };
 
@@ -169,6 +221,7 @@
         viewportPanel.style.display = 'flex';
         statsChip.style.display = 'flex';
 
+        acquireWakeLock();
         initWebCodecsDecoder();
 
         // Initialize touch & mouse input handler
@@ -188,7 +241,7 @@
             displayId: id
         });
 
-        // Start ping loop for latency tracking
+        // Ping loop for latency tracking
         setInterval(() => {
             sendJson({
                 type: 'ping',
@@ -200,7 +253,7 @@
     // Step 3: WebCodecs Hardware Video Decoding
     function initWebCodecsDecoder() {
         if (!('VideoDecoder' in window)) {
-            alert('Your browser does not support the WebCodecs API. Please update to a modern browser (Chrome, Edge, Safari 16.4+, Opera).');
+            alert('Your browser does not support WebCodecs. Please update to a modern browser (Chrome, Edge, Safari 16.4+, Opera).');
             return;
         }
 
@@ -306,10 +359,14 @@
         }
     }
 
-    // Fullscreen Handling
+    // Fullscreen & Orientation Lock
     function toggleFullscreen() {
         if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(() => {});
+            document.documentElement.requestFullscreen().then(() => {
+                if (screen.orientation && screen.orientation.lock) {
+                    screen.orientation.lock('landscape').catch(() => {});
+                }
+            }).catch(() => {});
         } else {
             if (document.exitFullscreen) {
                 document.exitFullscreen().catch(() => {});
@@ -321,6 +378,7 @@
     floatingFsBtn.addEventListener('click', toggleFullscreen);
 
     btnDisconnect.addEventListener('click', () => {
+        releaseWakeLock();
         window.location.reload();
     });
 
