@@ -21,6 +21,10 @@ import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import org.json.JSONObject
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 
 class MainActivity : ComponentActivity() {
 
@@ -145,7 +149,7 @@ class MainActivity : ComponentActivity() {
             addView(title)
 
             ipInput = EditText(context).apply {
-                hint = "Host PC IP (e.g. 192.168.10.3)"
+                hint = "Host PC IP (Auto-detecting...)"
                 setText(savedIp)
                 setTextColor(0xFFFFFFFF.toInt())
                 setHintTextColor(0xFF8B949E.toInt())
@@ -182,8 +186,8 @@ class MainActivity : ComponentActivity() {
             addView(btnConnect)
 
             statusText = TextView(context).apply {
-                text = "Make sure your phone and PC are on the same Wi-Fi."
-                setTextColor(0xFF8B949E.toInt())
+                text = "🔍 Scanning local Wi-Fi for PC..."
+                setTextColor(0xFF58A6FF.toInt())
                 textSize = 12f
                 setPadding(0, 24, 0, 0)
                 gravity = android.view.Gravity.CENTER
@@ -194,10 +198,64 @@ class MainActivity : ComponentActivity() {
 
         setContentView(rootLayout)
 
-        // Automatically connect on launch if saved IP exists
+        // Run UDP LAN Auto-Detection in background
+        startAutoDiscovery(prefs)
+
+        // Initial connection fallback
         if (savedIp.isNotEmpty()) {
             webView.loadUrl("https://$savedIp:$savedPort/")
         }
+    }
+
+    private fun startAutoDiscovery(prefs: android.content.SharedPreferences) {
+        Thread {
+            try {
+                val socket = DatagramSocket()
+                socket.broadcast = true
+                socket.soTimeout = 3000
+
+                val probeData = "AEGIS_DISCOVER".toByteArray()
+                val packet = DatagramPacket(
+                    probeData,
+                    probeData.size,
+                    InetAddress.getByName("255.255.255.255"),
+                    8444
+                )
+                socket.send(packet)
+
+                val buffer = ByteArray(1024)
+                val replyPacket = DatagramPacket(buffer, buffer.size)
+                socket.receive(replyPacket)
+
+                val replyText = String(replyPacket.data, 0, replyPacket.length).trim()
+                val json = JSONObject(replyText)
+
+                if (json.optString("type") == "AEGIS_ANNOUNCE") {
+                    val discoveredHost = json.optString("host", "Host PC")
+                    val discoveredIp = json.optString("ip")
+                    val discoveredPort = json.optInt("port", 8443)
+
+                    if (discoveredIp.isNotEmpty()) {
+                        runOnUiThread {
+                            prefs.edit().putString("host_ip", discoveredIp)
+                                .putString("host_port", discoveredPort.toString()).apply()
+                            ipInput.setText(discoveredIp)
+                            portInput.setText(discoveredPort.toString())
+                            statusText.text = "🟢 Auto-detected: $discoveredHost ($discoveredIp)"
+                            webView.loadUrl("https://$discoveredIp:$discoveredPort/")
+                        }
+                    }
+                }
+                socket.close()
+            } catch (e: Exception) {
+                // If broadcast is filtered or times out, fallback to current input
+                runOnUiThread {
+                    if (statusText.text.contains("Scanning")) {
+                        statusText.text = "Ready. Tap Connect or enter IP manually."
+                    }
+                }
+            }
+        }.start()
     }
 
     override fun onBackPressed() {

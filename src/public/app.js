@@ -198,6 +198,15 @@
             return;
         }
 
+        // Auto-detect Extended Monitor:
+        // Automatically select the extended screen (isPrimary === false) without requiring manual clicks
+        const targetDisplay = displays.find(d => !d.isPrimary) || displays[0];
+        if (targetDisplay && selectedDisplayId === null) {
+            console.log(`[AutoDetect] Auto-selecting display: ${targetDisplay.name} (${targetDisplay.width}x${targetDisplay.height}, Primary: ${targetDisplay.isPrimary})`);
+            selectDisplay(targetDisplay.id, targetDisplay);
+            return;
+        }
+
         displays.forEach((d) => {
             const card = document.createElement('div');
             card.className = 'display-card';
@@ -417,6 +426,17 @@
 
     btnFullscreen.addEventListener('click', toggleFullscreen);
     floatingFsBtn.addEventListener('click', toggleFullscreen);
+
+    const btnSwitchDisplay = document.getElementById('btn-switch-display');
+    if (btnSwitchDisplay) {
+        btnSwitchDisplay.addEventListener('click', () => {
+            selectedDisplayId = null;
+            viewportPanel.style.display = 'none';
+            statsChip.style.display = 'none';
+            displayPanel.style.display = 'block';
+            requestDisplays();
+        });
+    }
 
     btnDisconnect.addEventListener('click', () => {
         releaseWakeLock();

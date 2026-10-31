@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 AegisDisplay Standalone Python Receiver for Laptops
-Streams low-latency H.264 video directly into ffplay with zero latency.
+Streams low-latency H.264 video directly into ffplay with auto-discovery.
 """
 
 import sys
 import ssl
 import json
+import socket
 import subprocess
-import getpass
 
 try:
     import websocket
@@ -16,14 +16,41 @@ except ImportError:
     print("[Error] 'websocket-client' is required. Install via: pip install websocket-client")
     sys.exit(1)
 
+def discover_host(timeout=2.0):
+    """Sends UDP broadcast to discover AegisDisplay Host PC automatically."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    s.settimeout(timeout)
+    try:
+        s.sendto(b"AEGIS_DISCOVER", ("255.255.255.255", 8444))
+        data, _ = s.recvfrom(1024)
+        info = json.loads(data.decode())
+        if info.get("type") == "AEGIS_ANNOUNCE":
+            return info.get("ip"), info.get("port", 8443), info.get("host", "Host PC")
+    except Exception:
+        pass
+    finally:
+        s.close()
+    return None, None, None
+
 def main():
     print("=" * 55)
     print("    AegisDisplay - Standalone Native Laptop Client   ")
     print("=" * 55)
 
-    host_ip = input("Enter Host PC IP [192.168.10.3]: ").strip() or "192.168.10.3"
-    port = input("Enter Port [8443]: ").strip() or "8443"
-    pin = input("Enter 6-digit Host PIN: ").strip()
+    print("\n🔍 Auto-detecting Host PC on local network...")
+    disc_ip, disc_port, disc_host = discover_host(timeout=2.0)
+
+    if disc_ip:
+        print(f"🟢 Auto-detected: {disc_host} ({disc_ip}:{disc_port})")
+        host_ip = disc_ip
+        port = str(disc_port)
+    else:
+        print("⚠️  No broadcast received. Falling back to manual IP entry.")
+        host_ip = input("Enter Host PC IP [192.168.10.3]: ").strip() or "192.168.10.3"
+        port = input("Enter Port [8443]: ").strip() or "8443"
+
+    pin = input("\nEnter 6-digit Host PIN: ").strip()
 
     ws_url = f"wss://{host_ip}:{port}/ws"
     print(f"\n[Connecting] Establishing encrypted TLS connection to {ws_url}...")
@@ -66,13 +93,10 @@ def main():
         ws.close()
         return
 
-    print("\nAvailable Displays on Host:")
-    for d in displays:
-        tag = "[Primary]" if d.get("isPrimary") else "[Extended]"
-        print(f"  [{d['id']}] {d['name']} {tag} - {d['width']}x{d['height']}")
-
-    choice = input("\nSelect Display ID [default 0]: ").strip() or "0"
-    display_id = int(choice)
+    # Auto-detect extended display
+    target_display = next((d for d in displays if not d.get("isPrimary")), displays[0])
+    display_id = target_display["id"]
+    print(f"🖥️  Auto-selected: {target_display['name']} ({target_display['width']}x{target_display['height']})")
 
     # Launch ffplay in low-latency pipeline
     ffplay_cmd = [

@@ -9,6 +9,7 @@ const { ensureCertificates } = require('./security/cert_manager');
 const auth = require('./security/auth');
 const displayManager = require('./capture/display_manager');
 const StreamEngine = require('./capture/stream_engine');
+const DiscoveryBeacon = require('./discovery/beacon');
 
 // Load configuration
 const configPath = path.join(__dirname, '..', 'config.json');
@@ -37,8 +38,10 @@ try {
     process.exit(1);
 }
 
-// 2. Initialize Stream Engine
+// 2. Initialize Stream Engine & Discovery Beacon
 const streamEngine = new StreamEngine(config);
+const beacon = new DiscoveryBeacon(config.port);
+beacon.start();
 
 // 3. Static File Server for Client
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -210,6 +213,7 @@ server.listen(config.port, '0.0.0.0', () => {
 // Graceful shutdown
 function shutdown() {
     console.log('\n[Server] Shutting down AegisDisplay gracefully...');
+    beacon.stop();
     streamEngine.shutdown();
     server.close(() => {
         process.exit(0);
