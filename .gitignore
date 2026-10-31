@@ -1,0 +1,52 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# TLS Certificates and Private Keys (Security)
+certs/*.key
+certs/*.crt
+certs/*.pem
+certs/*.pfx
+!certs/.gitkeep
+
+# Compiled Binaries & Native Build Outputs
+*.exe
+*.dll
+*.obj
+*.o
+*.pdb
+src/capture/native/*.exe
+
+# Downloaded Drivers & Archives
+drivers/
+*.zip
+*.tar.gz
+
+# Environment & Local Config Overrides
+.env
+.env.local
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# IDE and Editor Directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Temporary and Log Files
+*.log
+tmp/
+temp/
