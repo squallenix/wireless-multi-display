@@ -123,9 +123,9 @@ class StreamEngine {
 
         let inputArgs = [];
         if (stream.mode === 'ddagrab') {
-            // Ultra-low latency DXGI Desktop Duplication
+            // Ultra-low latency DXGI Desktop Duplication with clean YUV420P conversion
             inputArgs = [
-                '-filter_complex', `ddagrab=output_idx=${stream.displayId}:framerate=${fps}:draw_mouse=1`
+                '-filter_complex', `ddagrab=output_idx=${stream.displayId}:framerate=${fps}:draw_mouse=1,hwdownload,format=bgra,format=yuv420p`
             ];
         } else {
             // Fallback GDI capture
@@ -135,7 +135,8 @@ class StreamEngine {
                 '-offset_x', `${display.left}`,
                 '-offset_y', `${display.top}`,
                 '-video_size', `${display.width}x${display.height}`,
-                '-i', 'desktop'
+                '-i', 'desktop',
+                '-vf', 'format=yuv420p'
             ];
         }
 
@@ -151,7 +152,11 @@ class StreamEngine {
             '-bufsize', '500k',          // Small buffer for immediate delivery
             '-g', `${Math.round(fps / 2)}`, // Intra-refresh GOP every 0.5 sec for instant sync
             '-bf', '0',                  // Zero B-frames to eliminate decoding delay
-            '-profile:v', 'baseline',
+            '-profile:v', 'high',
+            '-level', 'auto',
+            '-pix_fmt', 'yuv420p',       // Standard YUV420P for glitch-free phone hardware decoding
+            '-forced-idr', '1',
+            '-aud', '1',
             '-f', 'h264',
             'pipe:1'
         ];
