@@ -21,12 +21,14 @@
     let fpsCounter = 0;
     let lastFpsUpdate = Date.now();
     let touchHandler = null;
+    let scaleMode = localStorage.getItem('aegis_scale_mode') || 'fill';
 
     // Diagnostic Metrics
     const diag = {
         hostStatus: 'Initializing...',
         authStatus: 'Unverified',
         displayId: 'None',
+        scaleMode: scaleMode === 'fill' ? 'Fill (Edge-to-Edge)' : (scaleMode === 'contain' ? 'Fit (Letterbox)' : 'Zoom (Cropped)'),
         decoderState: 'Uninitialized',
         codecStr: '--',
         chunksReceived: 0,
@@ -61,6 +63,8 @@
     const statDot = document.getElementById('stat-dot');
     const statFps = document.getElementById('stat-fps');
     const statLatency = document.getElementById('stat-latency');
+    const btnAspectRatio = document.getElementById('btn-aspect-ratio');
+    const floatingAspectBtn = document.getElementById('floating-aspect-btn');
     const btnToggleDebug = document.getElementById('btn-toggle-debug');
     const debugOverlay = document.getElementById('debug-overlay');
     const btnCloseDebug = document.getElementById('btn-close-debug');
@@ -73,6 +77,7 @@
     const diagHostStatus = document.getElementById('diag-host-status');
     const diagAuthStatus = document.getElementById('diag-auth-status');
     const diagDisplayId = document.getElementById('diag-display-id');
+    const diagScaleMode = document.getElementById('diag-scale-mode');
     const diagDecoderState = document.getElementById('diag-decoder-state');
     const diagCodecStr = document.getElementById('diag-codec-str');
     const diagNetworkData = document.getElementById('diag-network-data');
@@ -100,6 +105,7 @@
         if (diagHostStatus) diagHostStatus.textContent = diag.hostStatus;
         if (diagAuthStatus) diagAuthStatus.textContent = diag.authStatus;
         if (diagDisplayId) diagDisplayId.textContent = diag.displayId;
+        if (diagScaleMode) diagScaleMode.textContent = diag.scaleMode;
         if (diagDecoderState) diagDecoderState.textContent = diag.decoderState;
         if (diagCodecStr) diagCodecStr.textContent = diag.codecStr;
         if (diagNetworkData) {
@@ -122,6 +128,54 @@
         if (btnRePair) btnRePair.style.display = showPair ? 'inline-block' : 'none';
     }
 
+    // Aspect Ratio & Screen Scaling (Fill/Stretch, Fit/Bars, Zoom/Crop)
+    function applyScaleMode(mode) {
+        scaleMode = mode;
+        try { localStorage.setItem('aegis_scale_mode', mode); } catch {}
+
+        displayCanvas.classList.remove('scale-fill', 'scale-contain', 'scale-cover');
+        displayCanvas.classList.add(`scale-${mode}`);
+        displayCanvas.style.objectFit = mode;
+
+        if (touchHandler && typeof touchHandler.setScaleMode === 'function') {
+            touchHandler.setScaleMode(mode);
+        }
+
+        const labels = {
+            fill: '📐 Fill Screen',
+            contain: '📐 Fit (Bars)',
+            cover: '📐 Zoom (Crop)'
+        };
+
+        const diagLabels = {
+            fill: 'Fill (Edge-to-Edge)',
+            contain: 'Fit (Letterbox)',
+            cover: 'Zoom (Cropped)'
+        };
+
+        if (btnAspectRatio) {
+            btnAspectRatio.textContent = labels[mode] || '📐 Fill Screen';
+        }
+
+        if (floatingAspectBtn) {
+            floatingAspectBtn.title = `Scale: ${labels[mode] || mode}`;
+        }
+
+        diag.scaleMode = diagLabels[mode] || mode;
+        updateDiagUI();
+    }
+
+    function cycleScaleMode() {
+        const modes = ['fill', 'contain', 'cover'];
+        const nextIdx = (modes.indexOf(scaleMode) + 1) % modes.length;
+        const nextMode = modes[nextIdx];
+        applyScaleMode(nextMode);
+        logDiag(`Display scale mode changed to: ${nextMode.toUpperCase()} (${diag.scaleMode})`, 'info');
+    }
+
+    if (btnAspectRatio) btnAspectRatio.addEventListener('click', cycleScaleMode);
+    if (floatingAspectBtn) floatingAspectBtn.addEventListener('click', cycleScaleMode);
+
     // Toggle Diagnostics HUD
     function toggleDebugOverlay() {
         if (!debugOverlay) return;
@@ -134,9 +188,11 @@
     if (btnCloseDebug) btnCloseDebug.addEventListener('click', () => { debugOverlay.style.display = 'none'; });
 
     window.addEventListener('keydown', (e) => {
+        if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
         if (e.key === 'd' || e.key === 'D') {
-            if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
             toggleDebugOverlay();
+        } else if (e.key === 'a' || e.key === 'A') {
+            cycleScaleMode();
         }
     });
 
@@ -458,13 +514,18 @@
             });
             touchHandler.enable();
         }
+        touchHandler.setScaleMode(scaleMode);
 
         // Subscribe to display video stream
         logDiag(`Subscribing to Display ${id} stream...`, 'info');
         sendJson({
             type: 'select_display',
             token: sessionToken,
-            displayId: id
+            displayId: id,
+            clientRes: {
+                width: Math.round(window.screen.width * (window.devicePixelRatio || 1)),
+                height: Math.round(window.screen.height * (window.devicePixelRatio || 1))
+            }
         });
 
         // Ping loop for latency tracking
@@ -516,6 +577,13 @@
                     if (streamLoading && streamLoading.style.display !== 'none') {
                         streamLoading.style.display = 'none';
                         logDiag(`First video frame displayed on canvas! (${displayCanvas.width}x${displayCanvas.height})`, 'success');
+
+                        // Check aspect ratio mismatch and inform user
+                        const streamAspect = displayCanvas.width / displayCanvas.height;
+                        const clientAspect = window.innerWidth / window.innerHeight;
+                        if (Math.abs(streamAspect - clientAspect) > 0.15) {
+                            logDiag(`Aspect notice: Stream is ${(streamAspect).toFixed(2)}:1 (${displayCanvas.width}x${displayCanvas.height}) vs Client ${(clientAspect).toFixed(2)}:1. Display scaling is set to ${scaleMode.toUpperCase()} to eliminate black bars. Tip: Set Monitor 2 to 1920x1080 in Windows Settings for native 16:9 sharpness.`, 'info');
+                        }
                     }
 
                     diag.renderedFrames++;
@@ -752,6 +820,9 @@
         releaseWakeLock();
         window.location.reload();
     });
+
+    // Initialize scale mode
+    applyScaleMode(scaleMode);
 
     // Start WebSocket
     connectWebSocket();

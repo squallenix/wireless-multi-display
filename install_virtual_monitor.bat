@@ -15,20 +15,26 @@ if %errorlevel% neq 0 (
     exit /b 0
 )
 
-echo [Step 1/3] Installing Driver Security Certificate...
+echo [Step 1/4] Installing Driver Security Certificate...
 set CERT_PATH="%~dp0drivers\vdd\VirtualDisplayDriver\Virtual_Display_Driver.cer"
 certutil -addstore -f root %CERT_PATH% >nul
 certutil -addstore -f TrustedPublisher %CERT_PATH% >nul
 echo    [OK] Certificate trusted.
 
 echo.
-echo [Step 2/3] Registering Driver Package into Windows...
+echo [Step 2/4] Deploying 16:9 High-Definition Display Profile...
+if not exist "C:\VirtualDisplayDriver" mkdir "C:\VirtualDisplayDriver"
+copy /y "%~dp0drivers\vdd\VirtualDisplayDriver\vdd_settings.xml" "C:\VirtualDisplayDriver\vdd_settings.xml" >nul
+echo    [OK] 1080p/16:9 display configuration deployed to C:\VirtualDisplayDriver.
+
+echo.
+echo [Step 3/4] Registering Driver Package into Windows...
 set INF_PATH="%~dp0drivers\vdd\VirtualDisplayDriver\MttVDD.inf"
 pnputil /add-driver %INF_PATH% /install
 echo    [OK] Driver package registered.
 
 echo.
-echo [Step 3/3] Creating Virtual Monitor 2 Device Node...
+echo [Step 4/4] Creating Virtual Monitor 2 Device Node...
 set DEVCON="%~dp0drivers\vdd\VDD.Control\Dependencies\devcon.exe"
 %DEVCON% install %INF_PATH% Root\MttVDD
 

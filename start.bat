@@ -30,6 +30,12 @@ if not exist "src\capture\native\desktop_runner.exe" (
     echo.
 )
 
+:: 3. Ensure 16:9 Virtual Display profile is deployed
+if not exist "C:\VirtualDisplayDriver\vdd_settings.xml" (
+    if not exist "C:\VirtualDisplayDriver" mkdir "C:\VirtualDisplayDriver" >nul 2>&1
+    copy /y "drivers\vdd\VirtualDisplayDriver\vdd_settings.xml" "C:\VirtualDisplayDriver\vdd_settings.xml" >nul 2>&1
+)
+
 :: 4. Launch Host Server
 echo [Starting] Launching secure HTTPS / WSS streaming server...
 node src\server.js

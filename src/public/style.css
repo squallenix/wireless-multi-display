@@ -265,8 +265,20 @@ body {
 #display-canvas {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: fill; /* Default to stretch edge-to-edge; eliminates vertical black bars */
     cursor: default;
+}
+
+#display-canvas.scale-fill {
+    object-fit: fill;
+}
+
+#display-canvas.scale-contain {
+    object-fit: contain;
+}
+
+#display-canvas.scale-cover {
+    object-fit: cover;
 }
 
 .overlay-msg {
@@ -296,12 +308,11 @@ body {
 .floating-btn {
     position: absolute;
     bottom: 20px;
-    right: 20px;
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: rgba(22, 27, 34, 0.8);
-    backdrop-filter: blur(6px);
+    background: rgba(22, 27, 34, 0.85);
+    backdrop-filter: blur(8px);
     border: 1px solid #30363d;
     color: #fff;
     font-size: 1.2rem;
@@ -309,9 +320,18 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.6;
-    transition: opacity 0.2s;
+    opacity: 0.65;
+    transition: opacity 0.2s, transform 0.2s;
     z-index: 50;
+}
+
+#floating-fs-btn {
+    right: 20px;
+}
+
+#floating-aspect-btn {
+    right: 74px;
+    font-size: 1.05rem;
 }
 
 .floating-btn:hover {

@@ -31,6 +31,7 @@
             <span id="stat-fps">0 FPS</span>
             <span class="sep">•</span>
             <span id="stat-latency">-- ms</span>
+            <button id="btn-aspect-ratio" class="btn-sm" style="color:#58a6ff;background:#161b22;" title="Toggle Scale: Fill (No Bars) / Fit (Bars) / Zoom">📐 Fill Screen</button>
             <button id="btn-toggle-debug" class="btn-sm" style="color:#8b949e;background:#161b22;" title="Toggle Diagnostics">🛠️ Debug</button>
             <button id="btn-switch-display" class="btn-sm" style="color:#58a6ff;">Switch Screen</button>
             <button id="btn-fullscreen-toggle" title="Toggle Fullscreen">⛶ Fullscreen</button>
@@ -90,7 +91,8 @@
                     <button id="btn-show-debug" class="btn-sm" style="background:#21262d;color:#8b949e;padding:6px 12px;">🛠️ Diagnostics</button>
                 </div>
             </div>
-            <!-- Floating Fullscreen Shortcut for Touch/Mobile -->
+            <!-- Floating Controls for Touch/Mobile/Fullscreen -->
+            <button id="floating-aspect-btn" class="floating-btn" title="Toggle Scale: Fill (No Bars) / Fit / Zoom">📐</button>
             <button id="floating-fs-btn" class="floating-btn" title="Fullscreen">⛶</button>
         </section>
 
@@ -104,6 +106,7 @@
                 <div>Host Server: <span id="diag-host-status" class="diag-val">Connecting...</span></div>
                 <div>Auth Session: <span id="diag-auth-status" class="diag-val">Unverified</span></div>
                 <div>Active Display: <span id="diag-display-id" class="diag-val">None</span></div>
+                <div>Display Scale: <span id="diag-scale-mode" class="diag-val">Fill (Edge-to-Edge)</span></div>
                 <div>WebCodecs Decoder: <span id="diag-decoder-state" class="diag-val">Uninitialized</span></div>
                 <div>Codec String: <span id="diag-codec-str" class="diag-val">--</span></div>
                 <div>Network Stream: <span id="diag-network-data" class="diag-val">0 chunks (0 KB)</span></div>
@@ -115,7 +118,7 @@
         </div>
     </main>
 
-    <script src="touch_handler.js?v=2.2"></script>
-    <script src="app.js?v=2.2"></script>
+    <script src="touch_handler.js?v=2.3"></script>
+    <script src="app.js?v=2.3"></script>
 </body>
 </html>

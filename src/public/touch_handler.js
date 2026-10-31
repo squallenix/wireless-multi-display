@@ -1,6 +1,7 @@
 /**
  * Touch and Mouse Input Handler for Client
  * Translates local device interactions into normalized (0.0 to 1.0) desktop input events.
+ * Fully supports Fit (Contain), Stretch (Fill), and Zoom (Cover) scaling modes.
  */
 
 class TouchInputHandler {
@@ -8,6 +9,7 @@ class TouchInputHandler {
         this.canvas = canvas;
         this.sendCallback = sendCallback;
         this.isEnabled = false;
+        this.scaleMode = 'fill'; // 'fill' (stretch / no bars), 'contain' (letterbox), 'cover' (zoom)
 
         this.lastTouchX = 0;
         this.lastTouchY = 0;
@@ -28,12 +30,49 @@ class TouchInputHandler {
         this.isEnabled = false;
     }
 
+    setScaleMode(mode) {
+        this.scaleMode = mode || 'fill';
+    }
+
     getNormalizedCoordinates(clientX, clientY) {
         const rect = this.canvas.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return { x: 0, y: 0 };
 
-        const x = (clientX - rect.left) / rect.width;
-        const y = (clientY - rect.top) / rect.height;
+        let renderLeft = rect.left;
+        let renderTop = rect.top;
+        let renderWidth = rect.width;
+        let renderHeight = rect.height;
+
+        const videoW = this.canvas.width;
+        const videoH = this.canvas.height;
+
+        if (videoW > 0 && videoH > 0 && this.scaleMode !== 'fill') {
+            const videoAspect = videoW / videoH;
+            const containerAspect = rect.width / rect.height;
+
+            if (this.scaleMode === 'contain') {
+                if (containerAspect > videoAspect) {
+                    // Container wider than video -> pillarboxed (bars left/right)
+                    renderWidth = rect.height * videoAspect;
+                    renderLeft = rect.left + (rect.width - renderWidth) / 2;
+                } else {
+                    // Container taller than video -> letterboxed (bars top/bottom)
+                    renderHeight = rect.width / videoAspect;
+                    renderTop = rect.top + (rect.height - renderHeight) / 2;
+                }
+            } else if (this.scaleMode === 'cover') {
+                if (containerAspect > videoAspect) {
+                    renderHeight = rect.width / videoAspect;
+                    renderTop = rect.top + (rect.height - renderHeight) / 2;
+                } else {
+                    renderWidth = rect.height * videoAspect;
+                    renderLeft = rect.left + (rect.width - renderWidth) / 2;
+                }
+            }
+        }
+
+        const x = (clientX - renderLeft) / renderWidth;
+        const y = (clientY - renderTop) / renderHeight;
 
         return {
             x: Math.max(0, Math.min(1, x)),
