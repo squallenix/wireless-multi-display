@@ -1,25 +1,28 @@
 # AegisDisplay: Secure, Ultra-Low Latency Wireless Multi-Display System
 
-Turn any laptop, smartphone, or tablet on your local network (Wi-Fi or LAN) into a high-performance 2nd, 3rd, or 4th monitor for your Windows PC, with physical-cable-like responsiveness (~8–15 ms latency) and enterprise-grade security.
+Turn any laptop, smartphone, or tablet on your local network (Wi-Fi or LAN) into a high-performance 2nd, 3rd, or 4th monitor for your Windows PC, with physical-cable-like responsiveness (~8–15 ms latency), zero black bars, and enterprise-grade zero-trust security.
 
 ---
 
-## Architecture Overview
+## 🏗️ Architecture Overview
 
 ```
 +-----------------------------------------------------------------------------------+
 |                                 HOST PC (Windows)                                 |
 |                                                                                   |
-|  [ Virtual Display Driver (IddCx) ] ---> Creates Monitor #2, #3 in Windows        |
+|  [ Virtual Display Driver (IddCx) ] ---> Creates true native 16:9 extended screens|
 |                  |                                                                |
 |                  v                                                                |
-|  [ DXGI Desktop Duplication API ]  ---> Zero-copy GPU frame capture (< 1 ms)      |
+|  [ DXGI / GDI Capture Pipeline ]   ---> Zero-copy GPU frame capture (< 1 ms)      |
 |                  |                                                                |
 |                  v                                                                |
-|  [ NVIDIA NVENC (RTX 5060) ]       ---> H.264/HEVC Ultra-Low Latency (p1/ull/CBR) |
+|  [ NVIDIA NVENC (RTX 5060/40/30) ] ---> H.264 Ultra-Low Latency (p1/ull/CBR/yuv420)|
 |                  |                                                                |
 |                  v                                                                |
-|  [ TLS / HTTPS & Secure WSS ]      ---> Encrypted transport with 6-digit PIN auth  |
+|  [ TLS / HTTPS & Secure WSS ]      ---> Encrypted transport with 6-digit PIN auth |
+|                  |                                                                |
+|                  v                                                                |
+|  [ UDP Discovery Beacon (:8444) ]  ---> Automatic LAN host discovery (Zero-Config)|
 +-----------------------------------------------------------------------------------+
                                            |
                            Local Wi-Fi (5GHz/6GHz) or LAN
@@ -30,61 +33,49 @@ Turn any laptop, smartphone, or tablet on your local network (Wi-Fi or LAN) into
 |  [ WebCodecs API (HTML5) ]         ---> Zero-delay hardware video decoding (<3ms) |
 |                  |                                                                |
 |                  v                                                                |
-|  [ GPU <canvas> Viewport ]         ---> Fullscreen native display feel            |
+|  [ GPU <canvas> Viewport ]         ---> Edge-to-edge scaling (Fill / Fit / Zoom)  |
 |                  |                                                                |
 |                  v                                                                |
-|  [ Sandboxed Input Backchannel ]   ---> Mouse & Touch clamped to monitor bounds   |
+|  [ Sandboxed Input Backchannel ]   ---> Pixel-perfect mouse & touch clamped to mon|
 +-----------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 🔒 Security Architecture (Anti-Hacker Hardening)
+## 📦 Downloads & Releases
 
-Wireless screen sharing and remote input are high-risk vectors if left unprotected. AegisDisplay enforces **Zero-Trust Security**:
-
-1. **Mandatory End-to-End Encryption (TLS / HTTPS & WSS)**
-   - All network traffic, video streams, and input events are encrypted using TLS with 2048-bit RSA keys.
-   - Self-signed certificates are automatically generated locally on first launch.
-   - Plain HTTP and unencrypted WebSockets are completely rejected.
-
-2. **Cryptographic Device Pairing (One-Time PIN)**
-   - When a device connects, it must enter the 6-digit random PIN displayed only on the host PC's screen.
-   - The PIN rotates automatically upon successful pairing and expires after 10 minutes.
-   - Verification uses constant-time string comparison (`crypto.timingSafeEqual`) to eliminate side-channel timing attacks.
-
-3. **Brute-Force & Rate-Limiting Protection**
-   - Maximum **3 failed PIN attempts** per IP address.
-   - Exceeding 3 failed attempts triggers an automatic **5-minute IP lockout**.
-   - Prevents unauthorized devices on the local network from brute-forcing access.
-
-4. **Input Sandboxing & Coordinate Clamping (Anti-Remote Hijack)**
-   - Touch and mouse events received from a client device are **strictly clamped** to the exact pixel rectangle (`[left, top, right, bottom]`) of the assigned virtual monitor.
-   - A client viewing Monitor 2 **CANNOT** move the mouse cursor or click onto Monitor 1 (primary desktop) or the Windows taskbar.
-   - Keyboard keystroke injection is **disabled by default** to prevent malicious command execution.
-
-5. **Anti-CSWSH & DNS Rebinding Protection**
-   - Strict `Origin` and `Host` validation on WebSocket handshakes prevents malicious websites visited by the user from hijacking the streaming session.
+| Platform | Download Asset | Description |
+| :--- | :--- | :--- |
+| **Android (Phone / Tablet)** | [**`AegisDisplay-v1.0.1.apk`**](releases/AegisDisplay-v1.0.1.apk) | Native Android app with UDP auto-discovery, landscape lock, and wake-lock. |
+| **Windows / macOS / Linux Laptop** | [**`AegisDisplay-Laptop-Client-v1.0.1.zip`**](releases/AegisDisplay-Laptop-Client-v1.0.1.zip) | Standalone launcher with LAN auto-discovery and borderless kiosk mode. |
+| **Web Browser (Zero-Install)** | Navigate to `https://<HOST-IP>:8443` | Works instantly in Chrome, Edge, Brave, Opera GX, and Safari (iOS/macOS). |
 
 ---
 
-## 🚀 Performance Highlights
+## 🚀 Key Features
 
-- **GPU Acceleration:** Encodes via **NVIDIA NVENC** (RTX 5060) with `preset=p1` (ultra-fast) and `tune=ull` (ultra-low latency).
-- **Zero B-Frames:** `bf=0` eliminates frame buffering latency.
-- **Client Hardware Decoding:** Uses the modern **WebCodecs API** directly in the browser on laptops and phones, achieving 1–3 ms decode times.
-- **Zero Client Install:** Any client device with a modern browser (Chrome, Edge, Safari, Opera) connects via URL without installing third-party apps.
+* **⚡ Ultra-Low Latency (~8–15 ms):** NVIDIA NVENC hardware encoding combined with client-side WebCodecs hardware decoding ensures instantaneous responsiveness.
+* **🛡️ Zero-Trust Security:** Mandatory TLS encryption, rolling 6-digit PIN authentication, brute-force IP rate-limiting, and strict input sandboxing.
+* **🌐 UDP LAN Auto-Discovery:** Receivers automatically locate the host server on the local network—no manual IP configuration required.
+* **🖥️ Native Virtual Extended Displays:** Includes signed IddCx driver installer to spawn true second and third monitors without physical cables or dummy plugs.
+* **📐 Zero Black Bars (Aspect Ratio Scaling):** Flexible display scaling modes (**Fill Screen**, **Fit**, **Zoom**) eliminate pillarboxing and letterboxing while maintaining pixel-accurate input mapping.
+* **🛠️ Built-in Diagnostics HUD:** Real-time on-screen metrics (FPS, network throughput, latency, H.264 NAL parsing stats, and live event log).
 
 ---
 
-## 🛠️ Quick Start
+## 🏁 Quick Start Guide
 
-### 1. Launch the Server on Host PC
-Simply double-click **`start.bat`** (or run `npm start` in PowerShell).
+### Step 1: Install the Virtual Extended Monitor (Host PC)
+To create an extended monitor without physical dummy plugs:
+1. Right-click **[`install_virtual_monitor.bat`](install_virtual_monitor.bat)** and select **Run as Administrator**.
+2. This automatically trusts the driver certificate, deploys the **16:9 widescreen profile** to `C:\VirtualDisplayDriver\`, and initializes the virtual monitor.
 
-*On first launch, `start.bat` automatically installs any required dependencies and launches the secure server.*
+*(To configure resolution at any time, run [`configure_display_resolution.bat`](configure_display_resolution.bat) and choose 1920×1080 or 1366×768).*
 
-The host terminal will display:
+### Step 2: Start the Host Server
+Simply double-click **[`start.bat`](start.bat)** (or execute `node src/server.js`).
+
+The console will display:
 ```
 ======================================================
 🛡️  AEGISDISPLAY - SECURE WIRELESS MULTI-DISPLAY HOST
@@ -93,44 +84,95 @@ Host GPU: NVIDIA GeForce RTX 5060 (NVENC Low-Latency)
 Status: Operational & Listening on port 8443
 
 Connect your laptop or phone on the same network to:
-   👉 https://192.168.10.3:8443
+   👉 https://192.168.10.3:8443   (Ethernet)
    👉 https://localhost:8443
 
 ======================================================
-[AUTH] NEW PAIRING PIN GENERATED: >>> 849201 <<<
+[AUTH] NEW PAIRING PIN GENERATED: >>> 729104 <<<
+[AUTH] Enter this PIN on your laptop/phone to pair.
 ======================================================
 ```
 
-### 2. Connect Your Laptop / Phone
-1. Open Chrome, Edge, or Safari on your laptop, phone, or tablet.
-2. Navigate to: `https://<YOUR-PC-IP>:8443` (e.g. `https://192.168.10.3:8443`).
-3. Accept the self-signed certificate warning (first time only).
-4. Enter the **6-Digit PIN** shown in the host console.
-5. Select which display you wish to use.
-6. Click **⛶ Fullscreen** to make your laptop/phone look exactly like a physical cable-connected monitor!
+### Step 3: Connect Receiver Device
+
+#### Option A: On a Laptop (Windows / macOS / Linux)
+1. Extract `AegisDisplay-Laptop-Client-v1.0.1.zip` or open the `client-laptop/` folder.
+2. Double-click **[`launch_laptop.bat`](client-laptop/launch_laptop.bat)** (or run `./launch_laptop.sh` on macOS/Linux).
+3. The launcher automatically detects the host PC via UDP and opens in borderless fullscreen mode.
+4. Enter the **6-digit PIN** displayed on the host PC console.
+
+#### Option B: On an Android Phone / Tablet
+1. Install **[`AegisDisplay-v1.0.1.apk`](releases/AegisDisplay-v1.0.1.apk)**.
+2. Launch the app—it will discover your PC automatically.
+3. Enter the **6-digit PIN** to connect.
+
+#### Option C: In Any Web Browser (No Installation)
+1. Open Chrome, Edge, Brave, Opera GX, or Safari on the client.
+2. Navigate to `https://<HOST-PC-IP>:8443` (e.g. `https://192.168.10.3:8443`).
+3. Accept the self-signed TLS warning once.
+4. Enter the **6-digit PIN** and select the extended monitor.
 
 ---
 
-## 🖥️ How to Add 2nd and 3rd Virtual Displays (Without Cables)
+## 📐 Aspect Ratio & Eliminating Black Bars
 
-Windows requires an Indirect Display Driver to create extended desktop monitors without physical cables or dummy plugs.
+If your client screen has vertical or horizontal black bars:
 
-To enable virtual displays:
-1. Run the setup helper:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts\setup_virtual_display.ps1
-   ```
-2. Download the signed open-source driver from [Virtual-Display-Driver Releases](https://github.com/itsmikethetech/Virtual-Display-Driver/releases).
-3. Extract and run `device-installer.bat` as Administrator.
-4. Open **Windows Settings > System > Display**.
-5. You will now see **Monitor 2** (and Monitor 3) as real extended displays that you can arrange, resize, or set custom resolutions for (1080p, 1440p, 60Hz, 120Hz).
-6. AegisDisplay will instantly detect the new monitor, allowing your laptop or phone to bind directly to it!
+1. **Client-Side Instant Scaling:**
+   * Click **`📐 Fill Screen`** in the top stats bar or tap the floating **`📐`** button on mobile.
+   * You can also press **`A`** on the keyboard to cycle modes:
+     * **Fill Screen** (`object-fit: fill`): Stretches video edge-to-edge, removing all black bars.
+     * **Fit (Letterbox)** (`object-fit: contain`): Preserves native monitor aspect ratio.
+     * **Zoom (Crop)** (`object-fit: cover`): Zooms to fill screen while preserving proportions.
+2. **Host-Side Resolution Matching:**
+   * Run **[`configure_display_resolution.bat`](configure_display_resolution.bat)** to open Windows Display Settings.
+   * Select **Monitor 2** (the virtual monitor).
+   * Set **Display resolution** to **1920×1080** (or **1366×768** to match your laptop).
+   * Click **Keep changes**. Windows will now render in native 16:9 widescreen.
+
+---
+
+## 🛠️ Diagnostics HUD & Monitoring
+
+AegisDisplay includes a built-in real-time diagnostics HUD to monitor performance:
+
+* **Open Diagnostics:** Click the **`🛠️ Debug`** button in the top bar or press the **`D`** key.
+* **Tracked Metrics:**
+  * Host Server connection & ping round-trip latency.
+  * Active display resolution & scaling mode.
+  * WebCodecs decoder state and H.264 profile string.
+  * Data throughput (KB / MB received and chunk counts).
+  * H.264 NAL parsing counts (SPS, PPS, IDR keyframes, P delta-frames).
+  * Rendered frame counter and real-time FPS counter.
+  * Live rolling event log console.
+* **Server Health REST Endpoint:**
+  * Query `GET https://<HOST-IP>:8443/api/status` for server uptime, active encoders, and viewer counts.
+
+---
+
+## 🔒 Security Architecture (Zero-Trust)
+
+1. **End-to-End Encryption (TLS / HTTPS & WSS):**
+   * All video feeds and input commands are transmitted over TLS with 2048-bit RSA keys.
+   * Unencrypted HTTP and insecure WebSockets are rejected.
+2. **Cryptographic Device Pairing (One-Time PIN):**
+   * Authentication requires a 6-digit rolling PIN generated exclusively on the host terminal.
+   * PIN verification uses constant-time string comparison (`crypto.timingSafeEqual`) to eliminate timing side-channel attacks.
+3. **Brute-Force Lockout Protection:**
+   * After **3 incorrect PIN attempts**, the offending IP address is locked out for 5 minutes.
+4. **Input Sandboxing & Coordinate Clamping:**
+   * Mouse and touch coordinates sent by the client are strictly normalized (0.0 to 1.0) and clamped to the bounding rectangle of the assigned monitor.
+   * Remote clients cannot navigate to or click on the primary monitor or Windows taskbar.
+   * Keystroke injection is disabled by default to prevent unauthorized command execution.
+5. **Anti-CSWSH & Origin Validation:**
+   * WebSocket handshakes validate the `Origin` and `Host` headers to prevent Cross-Site WebSocket Hijacking and DNS rebinding attacks.
 
 ---
 
 ## ⚙️ Configuration (`config.json`)
 
-You can tune performance in `config.json`:
+You can customize performance and security settings in `config.json`:
+
 ```json
 {
   "port": 8443,
@@ -144,8 +186,18 @@ You can tune performance in `config.json`:
 }
 ```
 
-- For **5GHz / 6GHz Wi-Fi or Ethernet**, `15M` to `20M` bitrate provides crisp, cable-quality text.
-- For slower 2.4GHz Wi-Fi, reduce `"bitrate": "8M"`.
+* **`bitrate` / `maxrate`:** `15M`–`20M` is ideal for 5GHz Wi-Fi or Ethernet. For 2.4GHz Wi-Fi, reduce to `6M`–`8M`.
+* **`fps`:** Set to `60` for smooth productivity and video playback.
+* **`encoder`:** Defaults to `h264_nvenc` for NVIDIA GPUs (falls back to software encoding if NVENC is unavailable).
+* **`allowKeyboard`:** Set to `true` only if you explicitly want remote keyboard input enabled.
+
+---
+
+## 🧹 Virtual Monitor Uninstallation
+
+If you wish to remove the virtual display driver:
+1. Right-click **[`remove_virtual_monitor.bat`](remove_virtual_monitor.bat)** and choose **Run as Administrator**.
+2. The script will delete the virtual device node and deregister the driver cleanly from Windows.
 
 ---
 
