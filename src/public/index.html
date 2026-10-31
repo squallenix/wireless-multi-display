@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0e14">
+    <title>AegisDisplay | Wireless Virtual Monitor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Top Security Header (Hidden in Fullscreen) -->
+    <header id="top-bar">
+        <div class="brand">
+            <span class="icon">🖥️</span>
+            <span class="title">AegisDisplay</span>
+            <span class="badge" id="tls-badge">🔒 TLS Encrypted</span>
+        </div>
+        <div class="stats-chip" id="stats-chip" style="display: none;">
+            <span class="dot"></span>
+            <span id="stat-fps">0 FPS</span>
+            <span class="sep">•</span>
+            <span id="stat-latency">-- ms</span>
+            <button id="btn-fullscreen-toggle" title="Toggle Fullscreen">⛶ Fullscreen</button>
+            <button id="btn-disconnect" class="btn-sm">Disconnect</button>
+        </div>
+    </header>
+
+    <!-- Main View Container -->
+    <main id="app-container">
+        <!-- Step 1: Authentication / PIN Entry Screen -->
+        <section id="auth-panel" class="card">
+            <h2>Device Pairing</h2>
+            <p class="subtitle">Enter the 6-digit PIN displayed on your host PC terminal.</p>
+
+            <form id="pin-form">
+                <div class="pin-inputs">
+                    <input type="text" id="pin-input" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" placeholder="123456" autocomplete="one-time-code" autofocus required>
+                </div>
+                <div id="auth-error" class="alert-box alert-error" style="display: none;"></div>
+                <button type="submit" id="btn-pair" class="btn-primary">Connect Device</button>
+            </form>
+
+            <div class="security-info">
+                <small>🛡️ Protected by brute-force lockout & zero-trust display sandboxing.</small>
+            </div>
+        </section>
+
+        <!-- Step 2: Display Selection Screen -->
+        <section id="display-panel" class="card" style="display: none;">
+            <h2>Choose Monitor</h2>
+            <p class="subtitle">Select which display you want this device to extend.</p>
+
+            <div id="display-list" class="display-grid">
+                <!-- Injected via JavaScript -->
+            </div>
+
+            <div class="actions">
+                <button id="btn-refresh-displays" class="btn-secondary">🔄 Refresh Monitors</button>
+            </div>
+        </section>
+
+        <!-- Step 3: Live Video Receiver Viewport -->
+        <section id="viewport-panel" style="display: none;">
+            <canvas id="display-canvas"></canvas>
+            <div id="stream-loading" class="overlay-msg">
+                <div class="spinner"></div>
+                <p>Waiting for GPU frame stream...</p>
+            </div>
+            <!-- Floating Fullscreen Shortcut for Touch/Mobile -->
+            <button id="floating-fs-btn" class="floating-btn" title="Fullscreen">⛶</button>
+        </section>
+    </main>
+
+    <script src="touch_handler.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

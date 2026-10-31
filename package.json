@@ -1,0 +1,26 @@
+{
+  "name": "aegis-wireless-multi-display",
+  "version": "1.0.0",
+  "description": "Ultra-low latency wireless multi-display software with zero-trust security and GPU NVENC hardware acceleration.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "compile": "powershell -ExecutionPolicy Bypass -File scripts/compile_native.ps1"
+  },
+  "keywords": [
+    "virtual-monitor",
+    "multi-display",
+    "nvenc",
+    "dxgi",
+    "low-latency",
+    "webrtc",
+    "webcodecs",
+    "security"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "ws": "^8.19.0"
+  }
+}

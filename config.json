@@ -1,0 +1,10 @@
+{
+  "port": 8443,
+  "bitrate": "15M",
+  "maxrate": "18M",
+  "fps": 60,
+  "encoder": "h264_nvenc",
+  "allowKeyboard": false,
+  "pinExpiresInMinutes": 10,
+  "maxFailedAttempts": 3
+}
