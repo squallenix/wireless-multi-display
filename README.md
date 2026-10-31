@@ -80,10 +80,9 @@ Wireless screen sharing and remote input are high-risk vectors if left unprotect
 ## 🛠️ Quick Start
 
 ### 1. Launch the Server on Host PC
-Double-click `start.bat` or run in PowerShell:
-```powershell
-npm start
-```
+Simply double-click **`start.bat`** (or run `npm start` in PowerShell).
+
+*On first launch, `start.bat` automatically installs any required dependencies and launches the secure server.*
 
 The host terminal will display:
 ```
